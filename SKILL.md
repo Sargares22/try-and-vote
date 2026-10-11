@@ -5,8 +5,9 @@ description: Build one touchable HTML page where a product owner tries candidate
 
 # Feature verdicts
 
-The script does the work and tells you the next step each time. `D` is `scripts/demo.mjs` in
-this folder (Node 18+, no dependencies, any harness).
+The script does the work and tells you the next step each time. `D` is the full path of
+`scripts/demo.mjs` beside this file. It needs Node 18+ and, for `check`, Chrome, Chromium or
+Edge on the machine (inside WSL it uses the Windows one). No other dependencies, any harness.
 
 ```
 node D init <folder>                 start: writes <folder>/demo.html, a working example
@@ -17,10 +18,13 @@ node D verdicts <answers> --page <folder>/demo.html     answers from elsewhere, 
 ```
 
 You write one file, `demo.html`: a mock of the product and a list of tabs. Its comments say
-what each field is. The frame around it (tabs, brief, switches, verdict, storage, layout,
+what each field is. Write it with your file-editing tool, not through a shell heredoc: command
+guards reject large scripts pasted into a command. The frame around it (tabs, brief, switches, verdict, storage, layout,
 themes) is added by the script and is not yours to edit or restyle.
 
-Show the page only after `check` prints no PROBLEM lines and you have opened the pictures.
+`check` tries every tab at desktop width and at phone width (400 px): a mock of a desktop
+window must shrink, stack or scroll inside its own box there, never widen the page. Show the
+page only after `check` prints no PROBLEM lines and you have opened the pictures.
 
 - **Any harness:** start `serve` as a background command and give the owner the address
   (`--lan` for their tablet or phone). It ends when they press "done" and prints the piles.

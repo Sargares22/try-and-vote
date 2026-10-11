@@ -19,7 +19,7 @@ import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
-import { networkInterfaces, tmpdir } from 'node:os';
+import { networkInterfaces, release, tmpdir } from 'node:os';
 import { basename, dirname, extname, join, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -48,13 +48,19 @@ const wrap = (product, early = '', late = '') => `${HEAD}${early}</head><body>\n
 // ---------- headless browser ----------
 // Every installed candidate. Which one works is found by trying: a browser can be installed and
 // still print nothing headless (seen with Edge inside a sandboxed agent session on Windows).
+// Inside WSL there is usually no Linux browser, but the Windows one runs through interop. It needs
+// Windows paths and a working folder on a Windows drive.
+const wsl = process.platform === 'linux' && /microsoft/i.test(release());
+const winPath = p => execFileSync('wslpath', ['-w', p], { encoding: 'utf8' }).trim();
 function browsers() {
   const pf = [process.env['ProgramFiles(x86)'], process.env.ProgramFiles, process.env.LOCALAPPDATA].filter(Boolean);
   const found = [process.env.DEMO_BROWSER,
     ...pf.map(p => join(p, 'Google/Chrome/Application/chrome.exe')), ...pf.map(p => join(p, 'Microsoft/Edge/Application/msedge.exe')),
     '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
-    '/usr/bin/google-chrome', '/usr/bin/chromium', '/usr/bin/chromium-browser', '/usr/bin/microsoft-edge'].filter(p => p && existsSync(p));
-  if (!found.length) { console.error('No Chrome or Edge found. Set DEMO_BROWSER to the browser executable.'); process.exit(2); }
+    '/usr/bin/google-chrome', '/usr/bin/google-chrome-stable', '/usr/bin/chromium', '/usr/bin/chromium-browser', '/snap/bin/chromium', '/usr/bin/microsoft-edge',
+    ...(wsl ? ['/mnt/c/Program Files/Google/Chrome/Application/chrome.exe', '/mnt/c/Program Files (x86)/Google/Chrome/Application/chrome.exe',
+      '/mnt/c/Program Files (x86)/Microsoft/Edge/Application/msedge.exe', '/mnt/c/Program Files/Microsoft/Edge/Application/msedge.exe'] : [])].filter(p => p && existsSync(p));
+  if (!found.length) { console.error('No Chrome, Chromium or Edge found, and check needs one for its rules and pictures.\nInstall one or set DEMO_BROWSER to a browser executable.'); process.exit(2); }
   return found;
 }
 let exe = null;
@@ -72,8 +78,11 @@ function run(work, file, html, size, extra) {
     writeFileSync(file, `<!doctype html><body style="margin:0;background:#777"><iframe src="${basename(inner)}" style="display:block;border:0;width:${w}px;height:${h}px"></iframe>
       <script>addEventListener("message",e=>{const p=document.createElement("pre");p.id="__probe";p.textContent=e.data;document.body.append(p)})</script>`);
   }
+  // A Windows browser started from WSL takes Windows paths
+  const win = wsl && exe.endsWith('.exe'), there = p => win ? winPath(p) : p;
+  const url = win ? 'file:///' + encodeURI(winPath(file).replace(/\\/g, '/')) : pathToFileURL(file).href;
   return execFileSync(exe, ['--headless=new', '--disable-gpu', '--hide-scrollbars', '--no-first-run', `--window-size=${size.replace('x', ',')}`,
-    `--user-data-dir=${join(work, 'profile')}`, '--virtual-time-budget=4000', ...extra, pathToFileURL(file).href],
+    `--user-data-dir=${there(join(work, 'profile'))}`, '--virtual-time-budget=4000', ...extra.map(a => a.startsWith('--screenshot=') ? '--screenshot=' + there(a.slice(13)) : a), url],
     { stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf8', maxBuffer: 64 << 20 });
 }
 // One run that walks every tab and reports what a picture cannot: errors, sideways scroll, page height, an empty mock
@@ -95,7 +104,9 @@ function probe(work, product, size) {
   return JSON.parse(decodeURIComponent(Buffer.from(m[1], 'base64').toString('latin1')));
 }
 function withWork(fn) {
-  const work = mkdtempSync(join(tmpdir(), 'demo-shot-'));
+  let base = tmpdir();
+  if (wsl) try { base = execFileSync('wslpath', ['-u', execFileSync('cmd.exe', ['/c', 'echo %TEMP%'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()], { encoding: 'utf8' }).trim(); } catch { }
+  const work = mkdtempSync(join(base, 'demo-shot-'));
   try { return fn(work); } finally { rmSync(work, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }); }
 }
 
@@ -169,7 +180,9 @@ function check() {
         ${s.js || ''}}catch(e){__errs.push(e.message)}
         setTimeout(()=>{if(!__errs.length)return;const b=document.createElement("div");b.textContent="SCRIPT ERROR: "+__errs.join(" | ");
         b.style.cssText="position:fixed;z-index:99999;left:0;right:0;top:0;padding:10px;background:#c00;color:#fff;font:700 14px sans-serif";document.body.append(b)},300)},100)</script>`;
-      run(work, join(work, 'shot.html'), wrap(product, EARLY, late), `${w}x${Math.max(h, tall + 24)}`, [`--screenshot=${join(shotsDir, s.name + '.png')}`]);
+      run(work, join(work, 'shot.html'), wrap(product, EARLY, late), `${w}x${Math.max(h, tall + 24)}`, [`--screenshot=${join(work, 'shot.png')}`]);
+      if (!existsSync(join(work, 'shot.png'))) { problems.push(`PROBLEM no picture for "${s.name}": the browser wrote nothing`); continue; }
+      copyFileSync(join(work, 'shot.png'), join(shotsDir, s.name + '.png')); rmSync(join(work, 'shot.png'));
       console.log(join(shotsDir, s.name + '.png'));
     }
     return problems;

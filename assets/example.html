@@ -129,8 +129,12 @@
   //   upd    true on a tab changed since the owner last looked; such tabs are put first
   //   reply  optional: your answer to the owner's comment on this tab, shown under the comment
   //   controls  optional switches beside the note: [{id, options:[[value, label], ...]}], first option is the start
-  //   mount(stage, v)  draws the mock into `stage`; v holds the current value of every control.
-  //                    Called again from scratch on every switch and on "reset".
+  //   mount(stage, v)  draws the mock into `stage`; v holds the current value of every control,
+  //                    as {controlId: value}. Called again from scratch on every switch and on
+  //                    "reset": the stage is emptied first, so keep the mock's state in variables
+  //                    inside mount and attach listeners only to what you put into the stage.
+  //                    A mock of a desktop window: give it max-inline-size:100% and let its own
+  //                    parts wrap or scroll, because the page is also checked at phone width.
   const tabs = [
     {id:'all',tab:'Полить всё',lvl:0,title:'Полить всё одним касанием',
      desc:'Когда поливаешь все цветы подряд, отмечать каждый по очереди долго. Одна кнопка сверху отмечает все сегодняшние.',
