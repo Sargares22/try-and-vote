@@ -1,0 +1,16 @@
+[
+ {
+  "name": "heat-hot-fixed",
+  "tab": "heat",
+  "set": {
+   "fix": "on"
+  },
+  "js": "document.getElementById('weather').click();"
+ },
+ {
+  "name": "later-swiped-phone",
+  "tab": "later",
+  "kind": "phone",
+  "js": "const r=document.querySelectorAll('.plant')[1],o={bubbles:true,pointerId:1,clientX:300,clientY:10};r.dispatchEvent(new PointerEvent('pointerdown',o));r.dispatchEvent(new PointerEvent('pointermove',{...o,clientX:180}));r.dispatchEvent(new PointerEvent('pointerup',{...o,clientX:180}));"
+ }
+]

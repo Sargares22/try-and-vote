@@ -1,0 +1,494 @@
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=Geist:wght@400;500;600;700&display=swap">
+<style>
+  /* The frame of a feature-verdicts page: the same for every product. `demo.mjs` puts it around
+     the product file; do not edit it per page. Layout: a top bar with the tabs and the counter;
+     then the brief and the verdict in a side column and the product mock on a stage beside
+     them. At phone width it is one column and the verdict sticks to the bottom edge. */
+  :root{
+    color-scheme:light;
+    --fd-page:#f3f3f1;--fd-stage:#e7e7e3;--fd-dot:rgba(24,25,27,.10);--fd-panel:#ffffff;--fd-field:#ffffff;
+    --fd-line:rgba(24,25,27,.14);--fd-ink:#18191b;--fd-dim:#62656b;--fd-accent:#2f5fdd;--fd-on:#ffffff;
+    --fd-yes:#16794a;--fd-yes-soft:#dff3e7;--fd-no:#c0392b;--fd-no-soft:#fbe6e2;--fd-warn:#8a5a00;--fd-warn-soft:#fbefd2;
+    --fd-font:"Onest","Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,"Helvetica Neue",sans-serif;
+  }
+  @media (prefers-color-scheme:dark){:root:not([data-theme="light"]):not([data-fd="light"]){
+    color-scheme:dark;
+    --fd-page:#131418;--fd-stage:#0c0d10;--fd-dot:rgba(255,255,255,.08);--fd-panel:#1a1b20;--fd-field:#2d2d2d;
+    --fd-line:rgba(255,255,255,.10);--fd-ink:#ffffff;--fd-dim:#8b8f9a;--fd-accent:#8ab4ff;--fd-on:#0e0f12;
+    --fd-yes:#7fd4a0;--fd-yes-soft:#1b2c23;--fd-no:#f0907f;--fd-no-soft:#33201d;--fd-warn:#e6c26a;--fd-warn-soft:#2e2814;
+  }}
+  :root[data-theme="dark"]:not([data-fd="light"]),:root[data-fd="dark"]{
+    color-scheme:dark;
+    --fd-page:#131418;--fd-stage:#0c0d10;--fd-dot:rgba(255,255,255,.08);--fd-panel:#1a1b20;--fd-field:#2d2d2d;
+    --fd-line:rgba(255,255,255,.10);--fd-ink:#ffffff;--fd-dim:#8b8f9a;--fd-accent:#8ab4ff;--fd-on:#0e0f12;
+    --fd-yes:#7fd4a0;--fd-yes-soft:#1b2c23;--fd-no:#f0907f;--fd-no-soft:#33201d;--fd-warn:#e6c26a;--fd-warn-soft:#2e2814;
+  }
+
+  *{box-sizing:border-box}
+  html,body{min-height:100%}
+  body{margin:0;background:var(--fd-page);color:var(--fd-ink);font:15px/1.45 var(--fd-font);-webkit-tap-highlight-color:transparent}
+  /* Zero specificity, so nothing here outranks the product's own rules inside the stage */
+  :where(.fd button,.fd textarea){font:inherit;color:inherit}
+  :where(.fd button){cursor:pointer}
+  .fd button:focus-visible,.fd textarea:focus-visible{outline:2px solid var(--fd-accent);outline-offset:2px}
+
+  .fd{display:flex;flex-direction:column;gap:14px;padding-inline:20px;padding-block:14px 20px;max-width:1440px;margin:0 auto}
+  .fd-top{display:flex;align-items:center;gap:8px 18px;min-width:0}
+  .fd-brand{flex:0 0 auto;display:flex;align-items:baseline;gap:8px}
+  .fd-brand b{font-size:16px;font-weight:700;letter-spacing:-.01em}
+  .fd-brand small{font-size:13px;color:var(--fd-dim)}
+  .fd-tabs{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;min-width:0;flex:1 1 auto;padding:2px}
+  .fd-tabs::-webkit-scrollbar{display:none}
+  .fd-tab{flex:0 0 auto;display:flex;align-items:center;gap:8px;border:0;background:none;height:38px;padding:0 14px 0 11px;border-radius:19px;
+    color:var(--fd-dim);white-space:nowrap;font-size:14px;font-weight:500;box-shadow:inset 0 0 0 1px var(--fd-line)}
+  .fd-tab:hover{color:var(--fd-ink)}
+  .fd-tab[aria-selected=true]{background:var(--fd-ink);color:var(--fd-page);box-shadow:none;font-weight:600}
+  /* The mark of a tab: an empty ring until decided, then a filled disc with the answer */
+  .fd-vm{flex:0 0 18px;height:18px;border-radius:50%;display:grid;place-items:center;font-size:11px;font-weight:700;line-height:1;box-shadow:inset 0 0 0 1.5px currentColor;opacity:.55}
+  .fd-vm.yes,.fd-vm.no,.fd-vm.later,.fd-vm.note{opacity:1;box-shadow:none;color:#fff}
+  .fd-vm.later{background:var(--fd-warn)}
+  .fd-vm.yes{background:var(--fd-yes)} .fd-vm.no{background:var(--fd-no)} .fd-vm.note{background:var(--fd-accent)}
+  :root .fd-vm.yes,:root .fd-vm.no,:root .fd-vm.later,:root .fd-vm.note{color:var(--fd-on)}
+  .fd-upd{font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--fd-on);background:var(--fd-accent);padding:2px 7px;border-radius:9px}
+  .fd-count{flex:0 0 auto;font-size:13px;color:var(--fd-dim);font-variant-numeric:tabular-nums;white-space:nowrap}
+  .fd-count b{font-size:16px;font-weight:700;color:var(--fd-ink)}
+
+  .fd-body{display:grid;grid-template-columns:minmax(300px,380px) minmax(0,1fr);grid-template-rows:auto auto 1fr;gap:18px 24px;
+    grid-template-areas:"brief stage" "verdict stage" "foot stage"}
+  .fd-brief{grid-area:brief;min-width:0;padding-top:6px}
+  .fd-meta{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
+  .fd-meta:empty{display:none}
+  .fd-lvl{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;padding:3px 9px;border-radius:10px}
+  .fd-lvl.l0{color:var(--fd-yes);background:var(--fd-yes-soft)} .fd-lvl.l1{color:var(--fd-warn);background:var(--fd-warn-soft)} .fd-lvl.l2{color:var(--fd-no);background:var(--fd-no-soft)}
+  .fd-brief h1{margin:0;font-size:26px;line-height:1.15;font-weight:700;letter-spacing:-.02em;text-wrap:balance}
+  .fd-brief p{margin:10px 0 0}
+  .fd-desc{font-size:15px;color:var(--fd-ink)}
+  .fd-do{padding:12px 14px;border-radius:12px;background:var(--fd-panel);box-shadow:inset 0 0 0 1px var(--fd-line);font-size:15px;font-weight:500}
+  .fd-do b{display:block;font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--fd-accent);font-weight:700;margin-bottom:2px}
+  .fd-caveat{padding:9px 14px;border-radius:12px;background:var(--fd-warn-soft);color:var(--fd-warn);font-size:13px}
+  .fd-who{font-size:13px;color:var(--fd-dim)}
+
+  .fd-stagewrap{grid-area:stage;min-width:0;position:relative;display:flex;flex-direction:column;border-radius:20px;
+    background:radial-gradient(var(--fd-dot) 1px,transparent 1.5px) 0 0/18px 18px var(--fd-stage)}
+  .fd-bar{display:flex;gap:8px;align-items:center;justify-content:center;flex-wrap:wrap;padding:12px 56px 0 12px;min-height:54px}
+  .fd-tools{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+  .fd-seg{display:flex;flex-wrap:wrap;background:var(--fd-panel);border-radius:12px;padding:3px;box-shadow:0 1px 2px rgba(0,0,0,.08),inset 0 0 0 1px var(--fd-line)}
+  .fd-seg button{border:0;background:none;height:36px;padding:0 14px;border-radius:9px;font-size:14px;font-weight:500;color:var(--fd-dim)}
+  .fd-seg button[aria-pressed=true]{background:var(--fd-ink);color:var(--fd-page);font-weight:600}
+  .fd-reset{position:absolute;right:12px;top:12px;width:42px;height:42px;border-radius:50%;border:0;background:var(--fd-panel);color:var(--fd-dim);
+    box-shadow:0 1px 2px rgba(0,0,0,.08),inset 0 0 0 1px var(--fd-line);display:grid;place-items:center;padding:0}
+  .fd-reset:hover{color:var(--fd-ink)}
+  .fd-reset svg{width:19px;height:19px}
+  .fd-stage{flex:1 1 auto;display:grid;place-items:center;min-height:420px;padding:16px;min-width:0}
+
+  .fd-verdict{grid-area:verdict;min-width:0;display:flex;flex-direction:column;gap:8px}
+  .fd-vbtns{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+  .fd-vb{border:0;border-radius:14px;height:56px;padding:0 6px;font-size:16px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:8px}
+  .fd-vb svg{width:20px;height:20px;flex:0 0 20px}
+  .fd-vb.yes{background:var(--fd-yes-soft);color:var(--fd-yes)} .fd-vb.no{background:var(--fd-no-soft);color:var(--fd-no)}
+  .fd-vb.later{background:var(--fd-warn-soft);color:var(--fd-warn)}
+  .fd-vb.later[aria-pressed=true]{background:var(--fd-warn);color:var(--fd-on)}
+  .fd-vb.yes[aria-pressed=true]{background:var(--fd-yes);color:var(--fd-on)}
+  .fd-vb.no[aria-pressed=true]{background:var(--fd-no);color:var(--fd-on)}
+  .fd-verdict.decided .fd-vb[aria-pressed=false]{background:none;box-shadow:inset 0 0 0 1px var(--fd-line);color:var(--fd-dim)}
+  .fd-verdict textarea,.fd-io textarea{display:block;width:100%;min-height:76px;resize:vertical;border-radius:12px;border:0;background:var(--fd-field);
+    box-shadow:inset 0 0 0 1px var(--fd-line);padding:11px 14px;font-size:15px;line-height:1.4}
+  .fd-verdict textarea:focus,.fd-io textarea:focus{outline:none;box-shadow:inset 0 0 0 2px var(--fd-accent)}
+  /* What the agent answered to the owner's comment on this tab */
+  .fd-reply{margin:0;padding:10px 14px;border-radius:12px;background:var(--fd-panel);box-shadow:inset 0 0 0 1px var(--fd-line);font-size:14px}
+  .fd-reply b{display:block;font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--fd-accent);font-weight:700;margin-bottom:2px}
+  .fd-done{border:0;height:44px;padding:0 18px;border-radius:12px;background:var(--fd-accent);color:var(--fd-on);font-size:15px;font-weight:600}
+  .fd-vline{display:flex;gap:10px;align-items:center;min-height:30px;font-size:13px;color:var(--fd-dim)}
+  .fd-vstate{flex:1 1 auto;min-width:0}
+  .fd-next{flex:0 0 auto;border:0;background:none;padding:6px 0;font-size:14px;font-weight:600;color:var(--fd-accent)}
+  .fd-foot{grid-area:foot;display:flex;gap:4px 16px;flex-wrap:wrap;align-content:flex-start;font-size:13px}
+  .fd-link{border:0;background:none;padding:6px 0;font-size:13px;color:var(--fd-dim);text-decoration:underline;text-underline-offset:3px}
+  .fd-io{display:flex;flex-direction:column;gap:8px;background:var(--fd-panel);border-radius:14px;padding:14px;box-shadow:inset 0 0 0 1px var(--fd-line)}
+  .fd-io textarea{min-height:110px;font:12px/1.4 ui-monospace,Consolas,monospace}
+  .fd-io div{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:13px;color:var(--fd-dim)}
+  .fd-btn{border:0;background:var(--fd-page);box-shadow:inset 0 0 0 1px var(--fd-line);height:38px;padding:0 14px;border-radius:10px;font-size:14px}
+
+  :root[data-fd-buttons="calm"] .fd-vb{background:var(--fd-panel);color:var(--fd-ink);box-shadow:inset 0 0 0 1px var(--fd-line)}
+  :root[data-fd-buttons="calm"] .fd-vb svg{display:none}
+  :root[data-fd-font="geist"]{--fd-font:"Geist","Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,"Helvetica Neue",sans-serif}
+  :root[data-fd-font="system"]{--fd-font:"Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,"Helvetica Neue",sans-serif}
+
+  @media (max-width:860px){
+    .fd{padding-inline:16px;gap:10px;padding-bottom:0}
+    .fd-top{flex-wrap:wrap}
+    .fd-tabs{order:3;flex:1 0 100%;margin-inline:-16px;padding-inline:16px}
+    .fd-count{margin-left:auto}
+    .fd-body{grid-template-columns:minmax(0,1fr);grid-template-rows:none;grid-template-areas:"brief" "stage" "verdict" "foot";gap:12px}
+    .fd-brief{padding-top:0}
+    .fd-brief h1{font-size:22px}
+    .fd-stagewrap{margin-inline:-16px;border-radius:0}
+    .fd-stage{min-height:0;padding:12px 16px 20px}
+    /* The verdict stays under the thumb while the mock is being tried */
+    .fd-verdict{position:sticky;bottom:0;z-index:20;margin-inline:-16px;padding:10px 16px calc(10px + env(safe-area-inset-bottom,0px));background:var(--fd-page);box-shadow:0 -1px 0 var(--fd-line)}
+    .fd-vb{height:52px}
+    .fd-verdict textarea{min-height:44px;height:44px}
+    .fd-verdict textarea:focus{height:96px}
+    .fd-vline{min-height:0}
+    .fd-vline:has(.fd-vstate:empty):has(.fd-next[hidden]){display:none}
+    .fd-foot{padding-bottom:16px}
+  }
+
+  /* Layout "stack": the page reads top to bottom. Tabs, a compact note with the switches on its
+     right, the mock, the verdict in one row. */
+  :root[data-fd-layout="stack"] body{font-size:14px;line-height:1.4}
+  :root[data-fd-layout="stack"] .fd{gap:10px;padding-inline:16px;padding-block:10px 16px}
+  :root[data-fd-layout="stack"] .fd-tabs{gap:2px}
+  :root[data-fd-layout="stack"] .fd-tab{height:auto;padding:8px 10px 10px;border-radius:6px;box-shadow:none;font-size:13px;gap:5px;flex-direction:row-reverse;position:relative;background:none}
+  :root[data-fd-layout="stack"] .fd-tab[aria-selected=true]{color:var(--fd-ink)}
+  :root[data-fd-layout="stack"] .fd-tab[aria-selected=true]::after{content:"";position:absolute;left:50%;bottom:3px;width:18px;height:3px;border-radius:2px;background:var(--fd-accent);transform:translateX(-50%)}
+  :root[data-fd-layout="stack"] .fd-vm{flex:none;width:auto;height:auto;font-size:13px;box-shadow:none;background:none;opacity:1}
+  :root[data-fd-layout="stack"] .fd-vm:empty{display:none}
+  :root[data-fd-layout="stack"] .fd-vm.later{color:var(--fd-warn)}
+  :root[data-fd-layout="stack"] .fd-vm.yes{color:var(--fd-yes)} :root[data-fd-layout="stack"] .fd-vm.no{color:var(--fd-no)} :root[data-fd-layout="stack"] .fd-vm.note{color:var(--fd-accent)}
+  :root[data-fd-layout="stack"] .fd-body{display:flex;flex-direction:column;gap:10px}
+  :root[data-fd-layout="stack"] .fd-brief{display:flex;gap:10px 20px;align-items:center;flex-wrap:wrap;background:var(--fd-panel);border-radius:10px;padding:10px 14px;box-shadow:inset 0 0 0 1px var(--fd-line)}
+  :root[data-fd-layout="stack"] .fd-brief-text{flex:1 1 300px;min-width:0;display:flex;flex-wrap:wrap;align-items:center;gap:0 8px}
+  :root[data-fd-layout="stack"] .fd-meta{order:1;margin:0}
+  :root[data-fd-layout="stack"] .fd-brief h1{font-size:15px;font-weight:600;letter-spacing:0;line-height:1.3}
+  :root[data-fd-layout="stack"] .fd-brief p{flex:1 0 100%;margin:3px 0 0;font-size:13px}
+  :root[data-fd-layout="stack"] .fd-desc{order:2;color:var(--fd-dim)}
+  :root[data-fd-layout="stack"] .fd-who{order:3;font-size:12px}
+  :root[data-fd-layout="stack"] .fd-caveat{order:4;padding:0;background:none}
+  :root[data-fd-layout="stack"] .fd-do{order:5;padding:0;background:none;box-shadow:none;border-radius:0;display:flex;gap:7px;align-items:baseline;margin-top:5px;font-weight:400}
+  :root[data-fd-layout="stack"] .fd-do b{display:inline;margin:0;flex:0 0 auto}
+  :root[data-fd-layout="stack"] .fd-seg{border-radius:6px;padding:2px;box-shadow:inset 0 0 0 1px var(--fd-line);background:var(--fd-page)}
+  :root[data-fd-layout="stack"] .fd-seg button{height:auto;padding:6px 11px;border-radius:5px;font-size:13px}
+  :root[data-fd-layout="stack"] .fd-seg button[aria-pressed=true]{background:var(--fd-line);color:var(--fd-ink)}
+  :root[data-fd-layout="stack"] .fd-stagewrap{background:none;border-radius:0;margin:0}
+  :root[data-fd-layout="stack"] .fd-bar{display:none}
+  :root[data-fd-layout="stack"] .fd-reset{right:0;top:0;width:36px;height:36px}
+  :root[data-fd-layout="stack"] .fd-stage{min-height:0;padding:4px 0}
+  :root[data-fd-layout="stack"] .fd-verdict{position:static;margin:0;flex-direction:row;flex-wrap:wrap;align-items:flex-start;gap:10px 14px;background:var(--fd-panel);border-radius:10px;padding:12px 14px;box-shadow:inset 0 0 0 1px var(--fd-line)}
+  :root[data-fd-layout="stack"] .fd-vbtns{display:flex;flex:0 0 auto}
+  :root[data-fd-layout="stack"] .fd-vb{height:46px;padding:0 20px;min-width:104px;font-size:15px;font-weight:600;border-radius:8px}
+  :root[data-fd-layout="stack"] .fd-verdict textarea{flex:1 1 260px;width:auto;min-height:46px;height:auto;border-radius:6px}
+  :root[data-fd-layout="stack"] .fd-vline,:root[data-fd-layout="stack"] .fd-reply{flex:1 0 100%;min-height:17px}
+  :root[data-fd-layout="stack"] .fd-vline:has(.fd-vstate:empty):has(.fd-next[hidden]){display:none}
+
+  /* Skin "graphite": neutral black and white, hairlines, white as the one strong colour, state
+     shown by small coloured dots. Drawn from pages looked at on 11.10.2026: the preview toolbar
+     of ui.shadcn.com/blocks, the option groups of the Radix Themes playground, the text tabs
+     and dot markers of linear.app, the filter pills of refero.design. */
+  :root[data-fd-skin="graphite"]{--fd-page:#ffffff;--fd-stage:#fafafa;--fd-dot:transparent;--fd-panel:#fafafa;--fd-field:#ffffff;--fd-line:rgba(10,10,10,.13);--fd-ink:#0a0a0a;--fd-dim:#737373;--fd-accent:#0a0a0a;--fd-on:#ffffff;
+    --fd-yes:#15803d;--fd-yes-soft:#f0fdf4;--fd-no:#b91c1c;--fd-no-soft:#fef2f2;--fd-warn:#a16207;--fd-warn-soft:#fefce8}
+  @media (prefers-color-scheme:dark){:root[data-fd-skin="graphite"]:not([data-theme="light"]):not([data-fd="light"]){color-scheme:dark;--fd-page:#0a0a0a;--fd-stage:#0a0a0a;--fd-dot:transparent;--fd-panel:#171717;--fd-field:#0a0a0a;--fd-line:rgba(255,255,255,.13);--fd-ink:#fafafa;--fd-dim:#a1a1a1;--fd-accent:#fafafa;--fd-on:#0a0a0a;
+    --fd-yes:#4ade80;--fd-yes-soft:#0f2417;--fd-no:#f87171;--fd-no-soft:#2a1212;--fd-warn:#facc15;--fd-warn-soft:#29230a;}}
+  :root[data-fd-skin="graphite"][data-theme="dark"]:not([data-fd="light"]),:root[data-fd-skin="graphite"][data-fd="dark"]{color-scheme:dark;--fd-page:#0a0a0a;--fd-stage:#0a0a0a;--fd-dot:transparent;--fd-panel:#171717;--fd-field:#0a0a0a;--fd-line:rgba(255,255,255,.13);--fd-ink:#fafafa;--fd-dim:#a1a1a1;--fd-accent:#fafafa;--fd-on:#0a0a0a;
+    --fd-yes:#4ade80;--fd-yes-soft:#0f2417;--fd-no:#f87171;--fd-no-soft:#2a1212;--fd-warn:#facc15;--fd-warn-soft:#29230a;}
+  :root[data-fd-skin="graphite"] .fd-brand b,:root[data-fd-skin="graphite"] .fd-brief h1{font-weight:600}
+  :root[data-fd-skin="graphite"] .fd-tab{height:auto;padding:7px 10px;border-radius:8px;box-shadow:none;background:none;flex-direction:row;gap:7px;font-size:14px;font-weight:500;color:var(--fd-dim)}
+  :root[data-fd-skin="graphite"] .fd-tab[aria-selected=true]{background:none;color:var(--fd-ink);font-weight:500}
+  :root[data-fd-skin="graphite"] .fd-tab[aria-selected=true]::after{content:none}
+  :root[data-fd-skin="graphite"] .fd-vm,:root[data-fd-skin="graphite"] .fd-vm:empty{display:block;flex:0 0 7px;width:7px;height:7px;font-size:0;box-shadow:none;opacity:1;background:var(--fd-line)}
+  :root[data-fd-skin="graphite"] .fd-vm.later{background:var(--fd-warn)}
+  :root[data-fd-skin="graphite"] .fd-vm.yes{background:var(--fd-yes)} :root[data-fd-skin="graphite"] .fd-vm.no{background:var(--fd-no)} :root[data-fd-skin="graphite"] .fd-vm.note{background:var(--fd-dim)}
+  :root[data-fd-skin="graphite"] .fd-upd{border-radius:5px}
+  :root[data-fd-skin="graphite"] .fd-lvl{background:none;box-shadow:inset 0 0 0 1px var(--fd-line);border-radius:6px}
+  :root[data-fd-skin="graphite"] .fd-do b{color:var(--fd-dim)}
+  :root[data-fd-skin="graphite"] .fd-do{border-radius:10px}
+  :root[data-fd-skin="graphite"] .fd-caveat{background:none;box-shadow:inset 0 0 0 1px var(--fd-line);border-radius:10px}
+  :root[data-fd-skin="graphite"][data-fd-layout="stack"] .fd-caveat{box-shadow:none}
+  :root[data-fd-skin="graphite"] .fd-brief,:root[data-fd-skin="graphite"] .fd-verdict{border-radius:12px}
+  :root[data-fd-skin="graphite"] .fd-stagewrap{background:var(--fd-stage);border-radius:14px;box-shadow:inset 0 0 0 1px var(--fd-line)}
+  :root[data-fd-skin="graphite"][data-fd-layout="stack"] .fd-stage{padding:14px}
+  :root[data-fd-skin="graphite"][data-fd-layout="stack"] .fd-reset{right:10px;top:10px}
+  :root[data-fd-skin="graphite"] .fd-bar{justify-content:flex-start}
+  :root[data-fd-skin="graphite"] .fd-seg{background:var(--fd-panel);border-radius:9px;padding:3px;box-shadow:inset 0 0 0 1px var(--fd-line)}
+  :root[data-fd-skin="graphite"] .fd-seg button{border-radius:6px;height:32px;padding:0 12px;font-size:13px;font-weight:500}
+  :root[data-fd-skin="graphite"] .fd-seg button[aria-pressed=true]{background:color-mix(in srgb,var(--fd-ink) 14%,var(--fd-panel));color:var(--fd-ink);font-weight:500}
+  :root[data-fd-skin="graphite"] .fd-reset{background:none;box-shadow:inset 0 0 0 1px var(--fd-line);border-radius:9px;width:38px;height:38px}
+  :root[data-fd-skin="graphite"] .fd-vb,:root[data-fd-skin="graphite"] .fd-verdict.decided .fd-vb[aria-pressed=false]{background:none;color:var(--fd-ink);box-shadow:inset 0 0 0 1px var(--fd-line);border-radius:10px;font-weight:500}
+  :root[data-fd-skin="graphite"] .fd-vb svg{display:block}
+  :root[data-fd-skin="graphite"] .fd-vb.later svg{color:var(--fd-warn)}
+  :root[data-fd-skin="graphite"][data-fd-buttons="color"] .fd-vb.later[aria-pressed=true]{background:var(--fd-warn)}
+  :root[data-fd-skin="graphite"] .fd-vb.yes svg{color:var(--fd-yes)} :root[data-fd-skin="graphite"] .fd-vb.no svg{color:var(--fd-no)}
+  :root[data-fd-skin="graphite"] .fd-vb[aria-pressed=true]{background:var(--fd-ink);color:var(--fd-on);box-shadow:none;font-weight:600}
+  :root[data-fd-skin="graphite"][data-fd-buttons="color"] .fd-vb.yes[aria-pressed=true]{background:var(--fd-yes)} :root[data-fd-skin="graphite"][data-fd-buttons="color"] .fd-vb.no[aria-pressed=true]{background:var(--fd-no)}
+  :root[data-fd-skin="graphite"][data-fd-buttons="color"] .fd-vb[aria-pressed=true] svg{color:inherit}
+  :root[data-fd-skin="graphite"] .fd-verdict textarea{border-radius:10px}
+  @media (max-width:860px){:root[data-fd-layout="stack"][data-fd-skin] .fd-stage{padding-top:52px}}
+</style>
+
+<!--PRODUCT-->
+
+<div class="fd">
+  <header class="fd-top">
+    <div class="fd-brand"><b id="fd-brand"></b><small id="fd-sub"></small></div>
+    <nav class="fd-tabs" id="fd-tabs" role="tablist"></nav>
+    <div class="fd-count" id="fd-sum"></div>
+  </header>
+  <div class="fd-body">
+    <section class="fd-brief" id="fd-brief"><div class="fd-brief-text">
+      <div class="fd-meta"><span class="fd-lvl" id="fd-lvl"></span><span class="fd-upd" id="fd-updtag" hidden></span></div>
+      <h1 id="fd-title"></h1>
+      <p class="fd-desc" id="fd-desc"></p>
+      <p class="fd-do"><b id="fd-do-label"></b><span id="fd-do"></span></p>
+      <p class="fd-caveat" id="fd-caveat" hidden></p>
+      <p class="fd-who" id="fd-who"></p>
+    </div></section>
+    <main class="fd-stagewrap">
+      <div class="fd-bar" id="fd-bar"><div class="fd-tools" id="fd-tools"></div></div>
+        <button class="fd-reset" id="fd-reset"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 1 0 2.6-5.9"/><path d="M4 4.5V9h4.5"/></svg></button>
+      <div class="fd-stage" id="fd-stage"></div>
+    </main>
+    <section class="fd-verdict" id="fd-verdict">
+      <div class="fd-vbtns">
+        <button class="fd-vb yes" id="fd-yes" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span></span></button>
+        <button class="fd-vb later" id="fd-later" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg><span></span></button>
+        <button class="fd-vb no" id="fd-no" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg><span></span></button>
+      </div>
+      <textarea id="fd-comment" rows="2"></textarea>
+      <p class="fd-reply" id="fd-reply" hidden><b id="fd-reply-label"></b><span id="fd-reply-text"></span></p>
+      <div class="fd-vline"><span class="fd-vstate" id="fd-vstate"></span><button class="fd-next" id="fd-next" hidden></button></div>
+    </section>
+    <footer class="fd-foot">
+      <button class="fd-done" id="fd-done" hidden></button>
+      <button class="fd-link" id="fd-copy"></button>
+      <button class="fd-link" id="fd-import"></button>
+    </footer>
+  </div>
+  <section class="fd-io" id="fd-io" hidden>
+    <textarea id="fd-io-text" spellcheck="false"></textarea>
+    <div><button class="fd-btn" id="fd-io-load"></button><button class="fd-btn" id="fd-io-close"></button><span id="fd-io-state"></span></div>
+  </section>
+</div>
+
+<script>
+(() => {
+  const DEMO = window.DEMO || {}, TABS = [...(DEMO.tabs || [])];
+  const TEXTS = {
+    ru:{levels:['не усложняет','усложняет немного','усложняет заметно'],
+      updated:'обновлено', doLabel:'Что нажать', caveat:'Не проверено: ', reset:'Начать сначала',
+      yes:'Беру', later:'Позже', no:'Не беру', comment:'Комментарий. Можно надиктовать', next:'Дальше →',
+      reply:'Ответ агента', done:'Готово, отправить агенту', sent:'Отправлено агенту. Страницу можно закрыть', notSent:'Не отправилось: агент не слушает. Нажмите «Скопировать ответы»',
+      sum:(done, all) => `<b>${done}</b> из ${all} решено`,
+      saving:'Сохраняю…', failed:'Не сохранилось. Ответ остался в этом браузере',
+      saved:{claude:'Сохранено. Агент это увидит', file:'Сохранено в файл рядом со страницей', local:'Сохранено только в этом браузере. Чтобы передать, нажмите «Скопировать ответы»'},
+      copy:'Скопировать ответы', copied:'Ответы скопированы. Вставьте их в чат', copyManual:'Выделено. Скопируйте вручную',
+      importBtn:'Вставить ответы', load:'Загрузить', close:'Закрыть', loaded:n => `Загружено ответов: ${n}`, badJson:'Это не ответы с такой страницы'},
+    en:{levels:['adds no complexity','adds a little complexity','adds real complexity'],
+      updated:'updated', doLabel:'What to press', caveat:'Not verified: ', reset:'Start over',
+      yes:'Take', later:'Later', no:'Skip', comment:'Comment. Dictation works', next:'Next →',
+      reply:'The agent\'s answer', done:'Done, send to the agent', sent:'Sent to the agent. You can close the page', notSent:'Not sent: the agent is not listening. Press "Copy answers"',
+      sum:(done, all) => `<b>${done}</b> of ${all} decided`,
+      saving:'Saving…', failed:'Not saved. The answer is kept in this browser',
+      saved:{claude:'Saved. The agent will see it', file:'Saved to the file beside the page', local:'Saved in this browser only. Press "Copy answers" to hand them over'},
+      copy:'Copy answers', copied:'Answers copied. Paste them into the chat', copyManual:'Selected. Copy it by hand',
+      importBtn:'Paste answers', load:'Load', close:'Close', loaded:n => `Answers loaded: ${n}`, badJson:'These are not answers from this page'},
+  };
+  const T = {...(TEXTS[DEMO.lang] || TEXTS.ru), ...(DEMO.text || {})};
+
+  const $ = id => document.getElementById(id);
+  TABS.sort((a, b) => !!b.upd - !!a.upd);
+  const root = document.documentElement;
+  // The look the owner chose on 11.10.2026 is the default: two columns, dark, coloured verdict buttons, system font
+  if (DEMO.theme !== 'auto') root.dataset.fd = DEMO.theme === 'light' ? 'light' : 'dark';
+  root.dataset.fdLayout = DEMO.layout === 'stack' ? 'stack' : 'split';
+  root.dataset.fdButtons = DEMO.buttons === 'calm' ? 'calm' : 'color';
+  root.dataset.fdFont = ['onest', 'geist'].includes(DEMO.font) ? DEMO.font : 'system';
+  root.dataset.fdSkin = DEMO.skin === 'graphite' ? 'graphite' : 'soft';
+  // The switches sit over the mock in the split layout and beside the note in the stacked one
+  const place = () => (root.dataset.fdLayout === 'stack' ? $('fd-brief') : $('fd-bar')).append($('fd-tools'));
+  if (DEMO.accent) document.documentElement.style.setProperty('--fd-accent', DEMO.accent);
+  const stage = $('fd-stage'), tools = $('fd-tools'), tabsEl = $('fd-tabs');
+  place();
+  const lsGet = k => { try { return localStorage.getItem(DEMO.key + k); } catch (_) { return null; } };
+  const lsSet = (k, v) => { try { localStorage.setItem(DEMO.key + k, v); } catch (_) {} };
+  let cur = 0, vals = {};
+  const tab = () => TABS[cur];
+
+  $('fd-brand').textContent = DEMO.brand || ''; $('fd-sub').textContent = DEMO.sub || '';
+  $('fd-do-label').textContent = T.doLabel; $('fd-updtag').textContent = T.updated;
+  $('fd-yes').lastChild.textContent = T.yes; $('fd-later').lastChild.textContent = T.later; $('fd-no').lastChild.textContent = T.no;
+  $('fd-reply-label').textContent = T.reply; $('fd-done').textContent = T.done;
+  $('fd-comment').placeholder = T.comment; $('fd-comment').setAttribute('aria-label', T.comment);
+  $('fd-reset').setAttribute('aria-label', T.reset); $('fd-reset').title = T.reset; $('fd-next').textContent = T.next;
+  $('fd-copy').textContent = T.copy; $('fd-import').textContent = T.importBtn;
+  $('fd-io-load').textContent = T.load; $('fd-io-close').textContent = T.close;
+
+  // ---------- tabs, brief, switches ----------
+  tabsEl.innerHTML = TABS.map((t, i) => `<button class="fd-tab" role="tab" data-tab="${i}" aria-selected="false"><span class="fd-vm"></span>${t.tab}${t.upd ? `<span class="fd-upd">${T.updated}</span>` : ''}</button>`).join('');
+  tabsEl.addEventListener('click', e => { const b = e.target.closest('[data-tab]'); if (b) go(Number(b.dataset.tab)); });
+  function mount(){ stage.replaceChildren(); tab().mount(stage, {...vals}); }
+  function drawTools(){
+    tools.innerHTML = (tab().controls || []).map(c => `<div class="fd-seg" role="group">${c.options.map(([v, label]) =>
+      `<button data-c="${c.id}" data-v="${v}" aria-pressed="${vals[c.id] === v}">${label}</button>`).join('')}</div>`).join('');
+  }
+  tools.addEventListener('click', e => {
+    const b = e.target.closest('button[data-c]'); if (!b) return;
+    vals[b.dataset.c] = b.dataset.v; drawTools(); mount();
+  });
+  $('fd-reset').addEventListener('click', mount);
+  function go(i){
+    if (typeTimer) flushText(tab().id);
+    cur = i;
+    const t = tab();
+    tabsEl.querySelectorAll('.fd-tab').forEach((b, j) => { b.setAttribute('aria-selected', j === i); if (j === i) b.scrollIntoView({block:'nearest', inline:'nearest'}); });
+    $('fd-title').textContent = t.title; $('fd-desc').textContent = t.desc; $('fd-who').textContent = t.who || ''; $('fd-do').textContent = t.do;
+    $('fd-who').hidden = !t.who;
+    $('fd-lvl').textContent = T.levels[t.lvl] || ''; $('fd-lvl').className = 'fd-lvl l' + t.lvl; $('fd-lvl').hidden = !(t.lvl in T.levels);
+    $('fd-updtag').hidden = !t.upd;
+    $('fd-reply').hidden = !t.reply; $('fd-reply-text').textContent = t.reply || '';
+    $('fd-caveat').hidden = !t.caveat; $('fd-caveat').textContent = t.caveat ? T.caveat + t.caveat : '';
+    vals = Object.fromEntries((t.controls || []).map(c => [c.id, c.options[0][0]]));
+    drawTools(); mount();
+    $('fd-vstate').textContent = ''; $('fd-comment').value = ''; showVerdict(true);
+    lsSet('-tab', t.id);
+    if (location.hash !== '#' + t.id) try { history.replaceState(null, '', '#' + t.id); } catch (_) {}
+  }
+
+  // ---------- verdict stores ----------
+  // A verdict is one document per tab: {verdict:'yes'|'later'|'no'|'', comment, title, at}.
+  // A store is {name, load() -> {id: doc}, save(id, doc), watch?(cb)}. The browser copy is always
+  // kept as well, so an answer is never lost when the outside store is away.
+  const stores = [
+    // Claude artifact with the `db` capability: the agent reads collection "verdicts"
+    async () => {
+      const db = window.claude?.use ? await window.claude.use('db') : null;
+      if (!db) return null;
+      return {name:'claude',
+        load:async () => ({}),
+        watch:cb => db.collection('verdicts').onSnapshot(s => cb(Object.fromEntries(s.docs.map(d => [d.id, d.data() || {}]))), () => {}),
+        save:(id, doc) => db.doc('verdicts/' + id).set(doc)};
+    },
+    // `demo.mjs serve`: the server keeps verdicts.json beside the page, any agent reads it from disk
+    async () => {
+      if (!window.__demoServe) return null;
+      const call = (path, init) => fetch('__verdicts' + path, init).then(r => { if (!r.ok) throw new Error(r.status); return r.json(); });
+      return {name:'file', load:() => call(''), save:(id, doc) => call('/' + id, {method:'PUT', body:JSON.stringify(doc)})};
+    },
+  ];
+  const V = {}, dirty = new Set(), chains = {};
+  let store = null, typeTimer = null;
+  try { Object.assign(V, JSON.parse(lsGet('') || '{}')); } catch (_) {}
+  const vYes = $('fd-yes'), vLater = $('fd-later'), vNo = $('fd-no'), vText = $('fd-comment'), vState = $('fd-vstate');
+  const clean = x => ({verdict:['yes', 'later', 'no'].includes(x.verdict) ? x.verdict : '', comment:String(x.comment || ''), at:String(x.at || '')});
+  const undecided = () => { for (let k = 1; k <= TABS.length; k++) { const i = (cur + k) % TABS.length; if (!V[TABS[i].id]?.verdict) return i; } return -1; };
+
+  function showVerdict(fillText){
+    const v = V[tab().id] || {};
+    vYes.setAttribute('aria-pressed', v.verdict === 'yes');
+    vLater.setAttribute('aria-pressed', v.verdict === 'later');
+    vNo.setAttribute('aria-pressed', v.verdict === 'no');
+    $('fd-verdict').classList.toggle('decided', !!v.verdict);
+    if (fillText && document.activeElement !== vText) vText.value = v.comment || '';
+    TABS.forEach((t, i) => {
+      const x = V[t.id] || {}, m = tabsEl.children[i].querySelector('.fd-vm');
+      m.className = 'fd-vm ' + (x.verdict || (x.comment ? 'note' : '')); m.textContent = {yes:'✓', later:'»', no:'✕'}[x.verdict] || (x.comment ? '…' : '');
+    });
+    $('fd-sum').innerHTML = T.sum(TABS.filter(t => V[t.id]?.verdict).length, TABS.length);
+    const next = undecided();
+    $('fd-next').hidden = !v.verdict || next < 0 || next === cur;
+  }
+  $('fd-next').addEventListener('click', () => { const i = undecided(); if (i >= 0) go(i); });
+  const docOf = id => ({verdict:V[id]?.verdict || '', comment:V[id]?.comment || '', title:TABS.find(t => t.id === id)?.title || id, at:V[id]?.at || ''});
+  function save(id, quiet){
+    V[id].at = new Date().toISOString();
+    lsSet('', JSON.stringify(V));
+    const tell = t => { if (!quiet && tab().id === id) vState.textContent = t; };
+    if (!store) { dirty.delete(id); return tell(T.saved.local); }
+    tell(T.saving);
+    const doc = docOf(id);
+    chains[id] = (chains[id] || Promise.resolve()).then(() => store.save(id, doc)).then(
+      () => { dirty.delete(id); tell(T.saved[store.name]); }, () => tell(T.failed));
+  }
+  // What came from outside wins, unless this browser holds a newer answer: that one is sent out
+  function merge(remote){
+    for (const [id, x] of Object.entries(remote)) {
+      if (dirty.has(id)) continue;
+      const r = clean(x);
+      if (!V[id] || r.at >= (V[id].at || '')) V[id] = r;
+    }
+    lsSet('', JSON.stringify(V));
+    for (const id of Object.keys(V)) {
+      const r = remote[id], mine = V[id];
+      if (store && (mine.verdict || mine.comment) && (!r || (mine.at || '') > String(r.at || ''))) {
+        const doc = docOf(id);
+        chains[id] = (chains[id] || Promise.resolve()).then(() => store.save(id, doc)).catch(() => {});
+      }
+    }
+    showVerdict(true);
+  }
+  function vote(v){
+    const id = tab().id, x = V[id] = V[id] || {};
+    x.verdict = x.verdict === v ? '' : v;
+    x.comment = vText.value.trim();
+    dirty.add(id); showVerdict(false); save(id);
+  }
+  vYes.addEventListener('click', () => vote('yes'));
+  vLater.addEventListener('click', () => vote('later'));
+  vNo.addEventListener('click', () => vote('no'));
+  // Outside Claude the agent waits for this press: the local server hands it the answers and stops
+  $('fd-done').addEventListener('click', async () => {
+    if (typeTimer) flushText(tab().id);
+    await Promise.all(Object.values(chains));
+    fetch('__done', {method:'POST'}).then(r => { vState.textContent = r.ok ? T.sent : T.notSent; }, () => { vState.textContent = T.notSent; });
+  });
+  function flushText(id){
+    clearTimeout(typeTimer); typeTimer = null;
+    const x = V[id] = V[id] || {}, text = vText.value.trim();
+    if ((x.comment || '') === text) return;
+    x.comment = text; showVerdict(false); save(id);
+  }
+  vText.addEventListener('input', () => {
+    const id = tab().id; dirty.add(id); vState.textContent = '';
+    clearTimeout(typeTimer); typeTimer = setTimeout(() => flushText(id), 900);
+  });
+  vText.addEventListener('blur', () => flushText(tab().id));
+
+  // ---------- copy the answers out, paste them in: the way that works with no store at all ----------
+  const io = $('fd-io'), ioText = $('fd-io-text'), ioState = $('fd-io-state');
+  const exportJson = () => JSON.stringify(Object.fromEntries(TABS.filter(t => V[t.id] && (V[t.id].verdict || V[t.id].comment)).map(t => [t.id, docOf(t.id)])), null, 1);
+  $('fd-copy').addEventListener('click', () => {
+    if (typeTimer) flushText(tab().id);
+    const text = exportJson();
+    const manual = () => { io.hidden = false; $('fd-io-load').hidden = true; ioText.value = text; ioText.focus(); ioText.select(); ioState.textContent = T.copyManual; };
+    if (!navigator.clipboard?.writeText) return manual();
+    navigator.clipboard.writeText(text).then(() => { vState.textContent = T.copied; }, manual);
+  });
+  $('fd-import').addEventListener('click', () => { io.hidden = false; $('fd-io-load').hidden = false; ioText.value = ''; ioState.textContent = ''; ioText.focus(); });
+  $('fd-io-close').addEventListener('click', () => { io.hidden = true; });
+  $('fd-io-load').addEventListener('click', () => {
+    let data = null;
+    try { data = JSON.parse(ioText.value); } catch (_) {}
+    const ids = data && typeof data === 'object' ? Object.keys(data).filter(id => TABS.some(t => t.id === id)) : [];
+    if (!ids.length) { ioState.textContent = T.badJson; return; }
+    for (const id of ids) { V[id] = clean(data[id]); dirty.add(id); save(id, true); }
+    showVerdict(true); ioState.textContent = T.loaded(ids.length);
+  });
+
+  // For screenshots and checks
+  window.demo = {
+    tabs:TABS.map(t => ({id:t.id, tab:t.tab, title:t.title, desc:t.desc, who:t.who || '', do:t.do, lvl:t.lvl, caveat:t.caveat || '', reply:t.reply || '', upd:!!t.upd,
+      code:String(t.mount), hasMount:typeof t.mount === 'function', controls:(t.controls || []).map(c => ({id:c.id, options:c.options.map(o => o[0])}))})),
+    config:{key:DEMO.key, rev:DEMO.rev, brand:DEMO.brand},
+    go:id => go(Math.max(0, TABS.findIndex(t => t.id === id))),
+    set:(c, v) => { vals[c] = v; drawTools(); mount(); },
+    look:o => { Object.assign(root.dataset, o); place(); },
+  };
+  if (!TABS.length) return;
+
+  // A new revision opens on the first tab, which is the updated one. Otherwise the #anchor, then the last tab seen.
+  let start = TABS.findIndex(t => '#' + t.id === location.hash);
+  if (start < 0) start = TABS.findIndex(t => t.id === lsGet('-tab'));
+  if (lsGet('-rev') !== String(DEMO.rev)) { start = 0; lsSet('-rev', String(DEMO.rev)); }
+  go(start < 0 ? 0 : start);
+
+  (async () => {
+    for (const make of stores) {
+      try { store = await make(); } catch (_) { store = null; }
+      if (store) break;
+    }
+    if (!store) return;
+    // The answers reach the agent by themselves: no copy and paste, and with the local server a "done" button
+    $('fd-copy').hidden = $('fd-import').hidden = true; $('fd-done').hidden = store.name !== 'file';
+    try { merge(await store.load()); } catch (_) {}
+    if (store.watch) store.watch(merge);
+  })();
+})();
+</script>

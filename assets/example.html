@@ -1,0 +1,167 @@
+<title>Кандидаты Лейки</title>
+<style>
+  /* The product file of a feature-verdicts page: everything that is about the product and
+     nothing else. The frame (tabs, brief, switches, verdict, storage) is added by
+     `demo.mjs`. This one is a worked example for a made-up plant-watering app; replace
+     all of it. The mock's look comes from the product itself: its own colours, type, shapes. */
+  .phone{--app:#f7faf8;--card:#ffffff;--leaf:#23804a;--water:#2467c9;--ink:#16241c;--dim:#5d6e64;--line:rgba(22,36,28,.1);
+    width:320px;max-width:100%;height:540px;border-radius:30px;background:var(--app);color:var(--ink);
+    box-shadow:0 0 0 6px #2a332e,0 18px 40px rgba(22,36,28,.28);margin:10px 6px 14px;display:flex;flex-direction:column;overflow:hidden;user-select:none;-webkit-user-select:none}
+  .app-top{padding:18px 18px 10px;display:flex;align-items:baseline;gap:8px}
+  .app-top h2{margin:0;font-size:22px;font-weight:700;flex:1 1 auto}
+  .app-top span{font-size:13px;color:var(--dim);font-variant-numeric:tabular-nums}
+  .weather{width:calc(100% - 28px);margin:0 14px 8px;padding:10px 12px;border:0;border-radius:12px;background:var(--card);color:inherit;font:inherit;font-size:14px;box-shadow:inset 0 0 0 1px var(--line);display:flex;align-items:center;gap:8px;cursor:pointer;text-align:left}
+  .weather span{flex:1 1 auto}
+  .weather small{font-size:12px;color:var(--water);font-weight:600}
+  .weather.hot{background:#fff3dc;color:#7a4b00}
+  .weather svg{width:18px;height:18px;flex:0 0 18px}
+  .all{width:calc(100% - 28px);margin:0 14px 8px;border:0;border-radius:12px;padding:12px;background:var(--water);color:#fff;font-weight:600;font-size:15px;display:flex;align-items:center;justify-content:center;gap:8px}
+  .all svg{width:18px;height:18px}
+  .plants{flex:1 1 auto;min-height:0;overflow-y:auto;padding:0 14px 8px;display:flex;flex-direction:column;gap:8px}
+  .sect{font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--dim);padding:8px 4px 0}
+  .slot{position:relative;border-radius:14px;background:#e3ecf9;flex:0 0 auto}
+  .slot .under{position:absolute;inset:0;display:flex;align-items:center;justify-content:flex-end;padding-right:16px;font-size:13px;font-weight:600;color:var(--water)}
+  .plant{position:relative;display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:14px;background:var(--card);box-shadow:inset 0 0 0 1px var(--line);touch-action:pan-y}
+  .plant.back{transition:transform .18s ease-out}
+  .plant .leaf{flex:0 0 36px;height:36px;border-radius:11px;background:#e2f1e8;color:var(--leaf);display:grid;place-items:center}
+  .plant .leaf svg{width:20px;height:20px}
+  .plant .nm{flex:1 1 auto;min-width:0;font-size:15px;font-weight:600}
+  .plant .nm small{display:block;font-size:12px;font-weight:400;color:var(--dim)}
+  .plant .nm small em{display:block;font-style:normal;color:#7a4b00;font-weight:600}
+  .plant.done .nm{color:var(--dim);text-decoration:line-through}
+  .plant .later{border:0;background:none;padding:8px 6px;font-size:13px;color:var(--water);font-weight:600}
+  .plant .tick{flex:0 0 34px;height:34px;border-radius:50%;border:2px solid var(--line);background:none;display:grid;place-items:center;color:transparent;padding:0}
+  .plant .tick svg{width:18px;height:18px}
+  .plant.done .tick{background:var(--leaf);border-color:var(--leaf);color:#fff}
+  .plant .days{font-size:13px;color:var(--dim);font-variant-numeric:tabular-nums;white-space:nowrap}
+  .say{flex:0 0 auto;margin:0 14px 14px;padding:9px 12px;border-radius:12px;background:#1b2420;color:#eef2ef;font-size:13px;min-height:37px}
+  @media (prefers-reduced-motion:reduce){.plant.back{transition:none}}
+</style>
+<script>
+(() => {
+  const G = {
+    leaf:'<path d="M5 19c0-8 5-13 14-14 0 9-5 14-13 14z"/><path d="M5 19l8-8"/>',
+    drop:'<path d="M12 3.5c3.5 4.2 5.5 7.2 5.5 10a5.5 5.5 0 0 1-11 0c0-2.8 2-5.8 5.5-10z"/>',
+    check:'<path d="m5 12.5 4.5 4.5L19 7.5"/>',
+    sun:'<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3 7 7M17 17l1.7 1.7M18.7 5.3 17 7M7 17l-1.7 1.7"/>',
+    cloud:'<path d="M7 18.5a4 4 0 0 1-.6-7.95 5.5 5.5 0 0 1 10.7 1A3.5 3.5 0 0 1 17 18.5z"/>',
+  };
+  const svg = n => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${G[n]}</svg>`;
+  const PLANTS = [['Монстера','Гостиная',6],['Фикус','Гостиная',9],['Базилик','Кухня',2],['Орхидея','Спальня',7]];
+
+  // One mock for every tab: the app's "today" screen. `opt` says which candidate feature is on.
+  function todayScreen(stage, opt){
+    const list = PLANTS.map(([n, room]) => ({n, room, done:false, later:false}));
+    stage.innerHTML = `<div class="phone"><div class="app-top"><h2>Сегодня</h2><span id="left"></span></div>
+      <div id="top"></div><div class="plants" id="plants"></div><div class="say" id="say"></div></div>`;
+    const el = id => stage.querySelector('#' + id);
+    const say = t => { el('say').textContent = t; };
+    const row = (p, i) => `<div class="slot">${opt.swipe && !p.later ? '<span class="under">Завтра →</span>' : ''}
+      <div class="plant${p.done ? ' done' : ''}" data-i="${i}"><span class="leaf">${svg('leaf')}</span>
+      <span class="nm">${p.n}<small>${p.room}</small></span>
+      ${opt.laterBtn && !p.done && !p.later ? '<button class="later" data-later>Завтра</button>' : ''}
+      ${p.later ? '' : `<button class="tick" data-tick aria-label="Полито">${svg('check')}</button>`}</div></div>`;
+    function draw(){
+      const today = list.filter(p => !p.later), left = today.filter(p => !p.done).length;
+      el('left').textContent = left ? `осталось ${left}` : 'всё полито';
+      el('top').innerHTML = opt.all && left > 1 ? `<button class="all" id="all">${svg('drop')}Полить все · ${left}</button>` : '';
+      el('plants').innerHTML = list.map((p, i) => p.later ? '' : row(p, i)).join('')
+        + (list.some(p => p.later) ? '<div class="sect">Завтра</div>' + list.map((p, i) => p.later ? row(p, i) : '').join('') : '');
+    }
+    const later = i => { list[i].later = true; say(`${list[i].n}: напомню завтра`); draw(); };
+    stage.querySelector('.phone').addEventListener('click', e => {
+      if (e.target.closest('#all')) { list.forEach(p => { if (!p.later) p.done = true; }); say('Полито всё, одним касанием'); return draw(); }
+      const r = e.target.closest('.plant'); if (!r) return;
+      const p = list[r.dataset.i];
+      if (e.target.closest('[data-later]')) return later(r.dataset.i);
+      if (e.target.closest('[data-tick]')) { p.done = !p.done; say(p.done ? `Полито: ${p.n}` : `${p.n}: отметка снята`); draw(); }
+    });
+    // Candidate "snooze", variant "swipe": drag a row to the left
+    if (opt.swipe) {
+      let drag = null;
+      const plants = el('plants');
+      plants.addEventListener('pointerdown', e => {
+        const r = e.target.closest('.plant');
+        if (!r || list[r.dataset.i].later || e.target.closest('button')) return;
+        drag = {r, x:e.clientX, dx:0}; r.classList.remove('back');
+        try { plants.setPointerCapture(e.pointerId); } catch (_) {}
+      });
+      plants.addEventListener('pointermove', e => {
+        if (!drag) return;
+        drag.dx = Math.min(0, e.clientX - drag.x);
+        drag.r.style.transform = `translateX(${drag.dx}px)`;
+      });
+      const end = () => {
+        const d = drag; if (!d) return; drag = null;
+        if (d.dx < -80) return later(d.r.dataset.i);
+        d.r.classList.add('back'); d.r.style.transform = '';
+      };
+      plants.addEventListener('pointerup', end); plants.addEventListener('pointercancel', end);
+    }
+    draw(); say(opt.hello);
+  }
+
+  // The second mock: the schedule, for the weather candidate. The weather strip is the thing to tap.
+  function scheduleScreen(stage, v){
+    let hot = false;
+    const draw = () => {
+      const fix = hot && v.fix === 'on';
+      stage.innerHTML = `<div class="phone"><div class="app-top"><h2>Расписание</h2></div>
+        <button class="weather${hot ? ' hot' : ''}" id="weather">${svg(hot ? 'sun' : 'cloud')}<span>${hot ? 'Жара, +31° всю неделю' : 'Обычная погода, +21°'}</span><small>сменить</small></button>
+        <div class="plants">${PLANTS.map(([n, room, days]) => {
+          const d = fix ? Math.max(1, Math.round(days * .7)) : days;
+          return `<div class="plant"><span class="leaf">${svg('leaf')}</span><span class="nm">${n}<small>${room}${d < days ? `<em>на ${days - d} дн. раньше</em>` : ''}</small></span><span class="days">через ${d} дн.</span></div>`;
+        }).join('')}</div>
+        <div class="say">${fix ? 'Поливы сдвинулись ближе, приложение сказало почему' : hot ? 'Жара, а расписание прежнее' : 'Коснитесь погоды, чтобы началась жара'}</div></div>`;
+      stage.querySelector('#weather').onclick = () => { hot = !hot; draw(); };
+    };
+    draw();
+  }
+
+  // One entry per candidate feature.
+  //   id     short latin word: the tab's #anchor and its document id in the verdict store
+  //   tab    the tab's label, two or three words
+  //   lvl    0 does not complicate the product, 1 a little, 2 noticeably
+  //   title, desc   what it is, through the user's eyes, one or two sentences
+  //   who    who proposed it and the opinions, one line
+  //   do     what to press in the mock
+  //   caveat optional: what this demo shows that has not been checked on the real thing
+  //   upd    true on a tab changed since the owner last looked; such tabs are put first
+  //   reply  optional: your answer to the owner's comment on this tab, shown under the comment
+  //   controls  optional switches beside the note: [{id, options:[[value, label], ...]}], first option is the start
+  //   mount(stage, v)  draws the mock into `stage`; v holds the current value of every control.
+  //                    Called again from scratch on every switch and on "reset".
+  const tabs = [
+    {id:'all',tab:'Полить всё',lvl:0,title:'Полить всё одним касанием',
+     desc:'Когда поливаешь все цветы подряд, отмечать каждый по очереди долго. Одна кнопка сверху отмечает все сегодняшние.',
+     who:'Предложил Claude. Второй консультант за, но просит оставить и отметку по одному.',
+     do:'Отметьте цветы по одному. Потом переключите на «Одной кнопкой» и нажмите её.',
+     controls:[{id:'mode',options:[['old','Как сейчас'],['new','Одной кнопкой']]}],
+     mount:(stage, v) => todayScreen(stage, {all:v.mode === 'new', hello:'Четыре цветка ждут полива'})},
+    {id:'later',tab:'На завтра',lvl:1,title:'Отложить полив на завтра',
+     desc:'Земля ещё влажная, поливать рано. Цветок уходит в «Завтра» и не висит невыполненным.',
+     who:'Предложил второй консультант. Спорно, как откладывать: жестом быстрее, кнопку видно.',
+     do:'Потяните строку влево. Потом переключите способ и нажмите «Завтра» в строке.',
+     controls:[{id:'how',options:[['swipe','Смахнуть строку'],['btn','Кнопка в строке']]}],
+     mount:(stage, v) => todayScreen(stage, {swipe:v.how === 'swipe', laterBtn:v.how === 'btn', hello:v.how === 'swipe' ? 'Потяните цветок влево' : 'У каждого цветка есть «Завтра»'})},
+    {id:'heat',tab:'Жара',lvl:2,title:'В жару напоминать раньше',
+     desc:'В жару земля сохнет быстрее. Приложение само сдвигает поливы ближе и пишет, почему.',
+     who:'Предложил Claude. Второй консультант против: расписание перестаёт быть предсказуемым.',
+     caveat:'откуда брать погоду и на сколько сдвигать. Здесь погода переключается вручную, а сдвиг условный.',
+     do:'Коснитесь строки с погодой в приложении. Потом сравните «Как сейчас» и «С поправкой».',
+     controls:[{id:'fix',options:[['off','Как сейчас'],['on','С поправкой']]}],
+     mount:scheduleScreen},
+  ];
+
+
+  window.DEMO = {
+    key:'leika-candidates',   // names the page in the browser's storage; unique per page
+    rev:'1',                  // bump on every publish that changes a tab
+    brand:'Лейка', sub:'что брать дальше',
+    lang:'ru',                // frame texts: 'ru' or 'en'
+    // Optional look of the frame; the defaults are the owner's choice. theme:'light'|'auto', layout:'stack',
+    // skin:'graphite', buttons:'calm', font:'onest'|'geist', accent:'#hex' (must read on the theme).
+    tabs,
+  };
+})();
+</script>

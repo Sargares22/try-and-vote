@@ -1,0 +1,4 @@
+out/
+verdicts.json
+.shown.json
+node_modules/
