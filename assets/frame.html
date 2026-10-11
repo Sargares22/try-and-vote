@@ -321,7 +321,12 @@
   // ---------- tabs, brief, switches ----------
   tabsEl.innerHTML = TABS.map((t, i) => `<button class="fd-tab" role="tab" data-tab="${i}" aria-selected="false"><span class="fd-vm"></span>${t.tab}${t.upd ? `<span class="fd-upd">${T.updated}</span>` : ''}</button>`).join('');
   tabsEl.addEventListener('click', e => { const b = e.target.closest('[data-tab]'); if (b) go(Number(b.dataset.tab)); });
-  function mount(){ stage.replaceChildren(); tab().mount(stage, {...vals}); }
+  // mount() may return a function; it is called before the next mount, to stop timers and the like
+  let unmount = null;
+  function mount(){
+    if (typeof unmount === 'function') try { unmount(); } catch (_) {}
+    stage.replaceChildren(); unmount = tab().mount(stage, {...vals});
+  }
   function drawTools(){
     tools.innerHTML = (tab().controls || []).map(c => `<div class="fd-seg" role="group">${c.options.map(([v, label]) =>
       `<button data-c="${c.id}" data-v="${v}" aria-pressed="${vals[c.id] === v}">${label}</button>`).join('')}</div>`).join('');

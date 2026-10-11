@@ -133,6 +133,8 @@
   //                    as {controlId: value}. Called again from scratch on every switch and on
   //                    "reset": the stage is emptied first, so keep the mock's state in variables
   //                    inside mount and attach listeners only to what you put into the stage.
+  //                    If the mock starts a timer, return a function that stops it: the frame calls
+  //                    it before the next mount.
   //                    A mock of a desktop window: give it max-inline-size:100% and let its own
   //                    parts wrap or scroll, because the page is also checked at phone width.
   const tabs = [

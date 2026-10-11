@@ -63,7 +63,9 @@ function browsers() {
   if (!found.length) { console.error('No Chrome, Chromium or Edge found, and check needs one for its rules and pictures.\nInstall one or set DEMO_BROWSER to a browser executable.'); process.exit(2); }
   return found;
 }
-let exe = null;
+let exe = null, browserSaid = '';
+// Extra browser flags for a machine that needs them, e.g. DEMO_BROWSER_ARGS="--no-sandbox" inside a sandboxed agent
+const moreArgs = (process.env.DEMO_BROWSER_ARGS || '').split(' ').filter(Boolean);
 const EARLY = '<script>window.__errs=[];addEventListener("error",e=>__errs.push(e.message||String(e)));addEventListener("unhandledrejection",e=>__errs.push(String(e.reason)))</script>'
   + '<style>*,*::before,*::after{transition:none!important;animation:none!important;caret-color:transparent!important}</style>';
 // A headless window is never narrower than about 500 px, so a phone-width page is shown in a
@@ -81,9 +83,10 @@ function run(work, file, html, size, extra) {
   // A Windows browser started from WSL takes Windows paths
   const win = wsl && exe.endsWith('.exe'), there = p => win ? winPath(p) : p;
   const url = win ? 'file:///' + encodeURI(winPath(file).replace(/\\/g, '/')) : pathToFileURL(file).href;
-  return execFileSync(exe, ['--headless=new', '--disable-gpu', '--hide-scrollbars', '--no-first-run', `--window-size=${size.replace('x', ',')}`,
+  try { return execFileSync(exe, ['--headless=new', '--disable-gpu', '--hide-scrollbars', '--no-first-run', ...moreArgs, `--window-size=${size.replace('x', ',')}`,
     `--user-data-dir=${there(join(work, 'profile'))}`, '--virtual-time-budget=4000', ...extra.map(a => a.startsWith('--screenshot=') ? '--screenshot=' + there(a.slice(13)) : a), url],
-    { stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf8', maxBuffer: 64 << 20 });
+    { stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8', maxBuffer: 64 << 20 }); }
+  catch (e) { browserSaid = `${exe}\n${String(e.stderr || e.message).trim().split('\n').slice(-6).join('\n')}`; throw e; }
 }
 // One run that walks every tab and reports what a picture cannot: errors, sideways scroll, page height, an empty mock
 function probe(work, product, size) {
@@ -100,7 +103,11 @@ function probe(work, product, size) {
     if ((m = dom.match(/<pre id="__probe">([^<]*)<\/pre>/))) break;
     exe = null;
   }
-  if (!m) { console.error(answered ? 'The page did not start. Is window.DEMO set in the product file?' : 'No browser answered headless. Set DEMO_BROWSER to one that does.'); process.exit(1); }
+  if (!m) {
+    console.error(answered ? 'The page did not start. Is window.DEMO set in the product file?'
+      : `No browser answered headless.${browserSaid ? '\nThe last one said:\n' + browserSaid : ''}\nSet DEMO_BROWSER to a browser that works here, or DEMO_BROWSER_ARGS to the flags it needs (a sandboxed agent session often needs --no-sandbox).`);
+    process.exit(1);
+  }
   return JSON.parse(decodeURIComponent(Buffer.from(m[1], 'base64').toString('latin1')));
 }
 function withWork(fn) {
@@ -175,9 +182,15 @@ function check() {
     for (const s of shots) {
       const kind = s.kind === 'phone' ? 'phone' : 'desktop';
       const [w, h] = sizes[kind].split('x').map(Number);
-      const tall = seen[kind].tabs.find(t => t.id === s.tab)?.height || 0;
-      const late = `<script>setTimeout(()=>{try{demo.go(${JSON.stringify(s.tab)});${Object.entries(s.set || {}).map(([c, v]) => `demo.set(${JSON.stringify(c)},${JSON.stringify(v)});`).join('')}
-        ${s.js || ''}}catch(e){__errs.push(e.message)}
+      let tall = seen[kind].tabs.find(t => t.id === s.tab)?.height || 0;
+      const state = `try{demo.go(${JSON.stringify(s.tab)});${Object.entries(s.set || {}).map(([c, v]) => `demo.set(${JSON.stringify(c)},${JSON.stringify(v)});`).join('')}
+        ${s.js || ''}}catch(e){__errs.push(e.message)}`;
+      if (s.js || s.set) try {
+        const dom = run(work, join(work, 'measure.html'), wrap(product, EARLY, `<script>setTimeout(()=>{${state}
+          setTimeout(()=>{const p=document.createElement("pre");p.id="__probe";p.textContent=String(document.documentElement.scrollHeight);document.body.append(p);if(parent!==window)parent.postMessage(p.textContent,"*")},400)},100)</script>`), `${w}x${h}`, ['--dump-dom']);
+        tall = Math.max(tall, Number(dom.match(/<pre id="__probe">(\d+)<\/pre>/)?.[1] || 0));
+      } catch { }
+      const late = `<script>setTimeout(()=>{${state}
         setTimeout(()=>{if(!__errs.length)return;const b=document.createElement("div");b.textContent="SCRIPT ERROR: "+__errs.join(" | ");
         b.style.cssText="position:fixed;z-index:99999;left:0;right:0;top:0;padding:10px;background:#c00;color:#fff;font:700 14px sans-serif";document.body.append(b)},300)},100)</script>`;
       run(work, join(work, 'shot.html'), wrap(product, EARLY, late), `${w}x${Math.max(h, tall + 24)}`, [`--screenshot=${join(work, 'shot.png')}`]);
@@ -190,7 +203,7 @@ function check() {
   console.log('');
   for (const p of problems) console.log(p);
   console.log(problems.length ? `\n${problems.length} problem(s). Fix them and check again; do not publish.`
-    : `No problems a script can see. Now open every picture above and look at it:\n  an extra or missing element, something off screen, a wrong icon, a mock that does not look like the product.\n\nPublish: ${join(dir, 'page.html')}\n  Claude: Artifact tool, capabilities {"db":{}}; keep the same file path to keep the address.\n  Elsewhere: node demo.mjs serve ${args[0]}   or send out/standalone.html\nThen: node demo.mjs mark ${args[0]}`);
+    : `No problems a script can see. Now open every picture above and look at it:\n  an extra or missing element, something off screen, a wrong icon, a mock that does not look like the product.\n  A state the pictures do not show (after a gesture, a timer, several presses): add it to shots.json beside the product file and check again.\n\nPublish: ${join(dir, 'page.html')}\n  Claude: Artifact tool, capabilities {"db":{}}; keep the same file path to keep the address.\n  Elsewhere: node demo.mjs serve ${args[0]}   or send out/standalone.html\nThen: node demo.mjs mark ${args[0]}`);
   process.exitCode = problems.length ? 1 : 0;
 }
 

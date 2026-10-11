@@ -26,6 +26,10 @@ themes) is added by the script and is not yours to edit or restyle.
 window must shrink, stack or scroll inside its own box there, never widen the page. Show the
 page only after `check` prints no PROBLEM lines and you have opened the pictures.
 
+The pictures show every tab and every switch position. A state reached another way (a gesture,
+several presses, a timer that ran out) goes into `shots.json` beside `demo.html`:
+`[{"name": "...", "tab": "id", "set": {"switch": "value"}, "js": "script run in the page", "kind": "phone"}]`.
+
 - **Any harness:** start `serve` as a background command and give the owner the address
   (`--lan` for their tablet or phone). It ends when they press "done" and prints the piles.
 - **Claude with artifacts, as an extra:** publish `out/page.html` with
