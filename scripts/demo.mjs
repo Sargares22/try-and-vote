@@ -32,7 +32,9 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const skill = join(dirname(fileURLToPath(import.meta.url)), '..');
 const [cmd, ...rest] = process.argv.slice(2);
 const flags = {}, args = [];
-for (let i = 0; i < rest.length; i++) rest[i].startsWith('--') ? flags[rest[i].slice(2)] = rest[i + 1] && !rest[i + 1].startsWith('--') ? rest[++i] : '' : args.push(rest[i]);
+// Flags that take no value, so a path after them stays a path
+const SWITCHES = ['prepare', 'full', 'lan', 'stay', 'example'];
+for (let i = 0; i < rest.length; i++) rest[i].startsWith('--') ? flags[rest[i].slice(2)] = !SWITCHES.includes(rest[i].slice(2)) && rest[i + 1] && !rest[i + 1].startsWith('--') ? rest[++i] : '' : args.push(rest[i]);
 const sha = s => createHash('sha1').update(s).digest('hex').slice(0, 12);
 function need(file) {
   if (!file || !existsSync(file) || statSync(file).isDirectory()) { console.error('No such product file: ' + (file || '(not given)')); process.exit(2); }
