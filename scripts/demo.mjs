@@ -472,10 +472,10 @@ function verdicts(src = args[0], known = null) {
     ids = withWork(work => probe(work, need(flags.page), '1280x860')).tabs.map(t => t.id);
     for (const id of Object.keys(all)) if (!ids.includes(id)) ids.push(id);
   }
-  const piles = { TAKE: [], LATER: [], REJECT: [], 'COMMENT, NO VERDICT': [], UNTOUCHED: [] };
+  const piles = { TAKE: [], LATER: [], SKIP: [], 'COMMENT, NO VERDICT': [], UNTOUCHED: [] };
   for (const id of ids) {
     const v = all[id] && typeof all[id] === 'object' ? all[id] : {}, comment = String(v.comment || '').trim();
-    piles[{ yes: 'TAKE', later: 'LATER', no: 'REJECT' }[v.verdict] || (comment ? 'COMMENT, NO VERDICT' : 'UNTOUCHED')].push({ id, title: String(v.title || ''), comment, at: String(v.at || '') });
+    piles[{ yes: 'TAKE', later: 'LATER', no: 'SKIP' }[v.verdict] || (comment ? 'COMMENT, NO VERDICT' : 'UNTOUCHED')].push({ id, title: String(v.title || ''), comment, at: String(v.at || '') });
   }
   for (const [name, list] of Object.entries(piles)) {
     console.log(`${name} (${list.length})`);
