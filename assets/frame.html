@@ -1,6 +1,5 @@
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=Geist:wght@400;500;600;700&display=swap">
 <style>
-  /* The frame of a feature-verdicts page: the same for every product. `demo.mjs` puts it around
+  /* The frame of a try-and-vote page: the same for every product. `demo.mjs` puts it around
      the product file; do not edit it per page. Layout: a top bar with the tabs and the counter;
      then the brief and the verdict in a side column and the product mock on a stage beside
      them. In a narrow container it is one column and the verdict sticks to the bottom edge.
@@ -96,7 +95,22 @@
   .fd-reset{position:absolute;inset-inline-end:.75rem;inset-block-start:.75rem;inline-size:2.75rem;block-size:2.75rem;border-radius:50%;border:0;background:var(--fd-panel);color:var(--fd-dim);
     box-shadow:inset 0 0 0 1px var(--fd-line);display:grid;place-items:center;padding:0}
   .fd-reset svg{inline-size:1.1875rem;block-size:1.1875rem}
-  .fd-stage{flex:1 1 auto;display:grid;place-items:safe center;min-block-size:26rem;padding:1rem;min-inline-size:0}
+  .fd-stage{flex:1 1 auto;display:grid;grid-template-columns:minmax(0,1fr);place-items:safe center;min-block-size:26rem;padding:1rem;min-inline-size:0}
+
+  /* Surfaces: what the mock lives in. The frame draws the device or the window, the product
+     file fills the inside. Nothing here is wider than its container. */
+  .fd-surface{--bezel:light-dark(oklch(27% 0 none),oklch(40% 0.01 274));position:relative;display:flex;flex-direction:column;max-inline-size:100%;min-inline-size:0}
+  .fd-s-body{flex:1 1 auto;min-block-size:0;min-inline-size:0;overflow:auto;position:relative;background:oklch(100% 0 none);color:oklch(20% 0 none);color-scheme:light}
+  .fd-s-phone{inline-size:min(22.25rem,100%);block-size:36.75rem;border:.375rem solid var(--bezel);border-radius:2.125rem;overflow:clip;box-shadow:0 1.125rem 2.5rem color-mix(in oklch,black 28%,transparent)}
+  .fd-s-tablet{inline-size:min(47rem,100%);block-size:33rem;border:.5rem solid var(--bezel);border-radius:1.5rem;overflow:clip;box-shadow:0 1.125rem 2.5rem color-mix(in oklch,black 28%,transparent)}
+  .fd-s-window,.fd-s-browser{inline-size:min(60rem,100%);block-size:35rem;border-radius:.625rem;overflow:clip;box-shadow:0 0 0 1px var(--fd-line),0 1.125rem 2.5rem color-mix(in oklch,black 28%,transparent)}
+  .fd-s-bar{flex:none;display:flex;align-items:center;gap:.625rem;block-size:2.375rem;padding-inline:.875rem;background:var(--fd-panel);color:var(--fd-dim);font-size:.8125rem;box-shadow:0 1px 0 var(--fd-line)}
+  .fd-s-bar i{flex:none;inline-size:.625rem;block-size:.625rem;border-radius:50%;background:var(--fd-line)}
+  .fd-s-bar i + i{margin-inline-start:-.25rem}
+  .fd-s-bar span{flex:1 1 auto;min-inline-size:0;white-space:nowrap;overflow:clip;text-overflow:ellipsis}
+  .fd-s-browser .fd-s-bar span{flex:0 1 26rem;margin-inline:auto;padding:.1875rem .75rem;border-radius:999px;background:var(--fd-page);text-align:center}
+  .fd-s-fill{inline-size:100%;block-size:100%;min-block-size:26rem;border-radius:.75rem;overflow:clip}
+  .fd-s-bare .fd-s-body{overflow:visible;background:none;color:inherit;color-scheme:inherit}
 
   .fd-verdict{grid-area:verdict;min-inline-size:0;display:flex;flex-direction:column;gap:.5rem}
   .fd-vbtns{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.5rem}
@@ -268,6 +282,7 @@
 <script>
 (() => {
   const DEMO = window.DEMO || {}, TABS = [...(DEMO.tabs || [])];
+  const SURFACES = ['phone', 'tablet', 'window', 'browser', 'bare', 'fill'];
   const TEXTS = {
     ru:{levels:['не усложняет','усложняет немного','усложняет заметно'],
       updated:'обновлено', doLabel:'Что нажать', caveat:'Не проверено: ', reset:'Начать сначала',
@@ -288,7 +303,10 @@
       copy:'Copy answers', copied:'Answers copied. Paste them into the chat', copyManual:'Selected. Copy it by hand',
       importBtn:'Paste answers', load:'Load', close:'Close', loaded:n => `Answers loaded: ${n}`, badJson:'These are not answers from this page'},
   };
-  const T = {...(TEXTS[DEMO.lang] || TEXTS.ru), ...(DEMO.text || {})};
+  // The page's own language first; a page that names none follows the viewer's browser
+  const lang = TEXTS[DEMO.lang] ? DEMO.lang : /^ru/i.test(navigator.language || '') ? 'ru' : 'en';
+  const T = {...TEXTS[lang], ...(DEMO.text || {})};
+  document.documentElement.lang = lang;
 
   const $ = id => document.getElementById(id);
   TABS.sort((a, b) => !!b.upd - !!a.upd);
@@ -298,6 +316,12 @@
   root.dataset.fdLayout = DEMO.layout === 'stack' ? 'stack' : 'split';
   root.dataset.fdButtons = DEMO.buttons === 'calm' ? 'calm' : 'color';
   root.dataset.fdFont = ['onest', 'geist'].includes(DEMO.font) ? DEMO.font : 'system';
+  // A web font is fetched only by a page that asks for one: the default look needs no network
+  if (root.dataset.fdFont !== 'system') {
+    const link = document.createElement('link'); link.rel = 'stylesheet';
+    link.href = 'https://fonts.googleapis.com/css2?family=' + (root.dataset.fdFont === 'geist' ? 'Geist' : 'Onest') + ':wght@400;500;600;700&display=swap';
+    document.head.append(link);
+  }
   root.dataset.fdSkin = DEMO.skin === 'graphite' ? 'graphite' : 'soft';
   // The switches sit over the mock in the split layout and beside the note in the stacked one
   const place = () => (root.dataset.fdLayout === 'stack' ? $('fd-brief') : $('fd-bar')).append($('fd-tools'));
@@ -325,7 +349,17 @@
   let unmount = null;
   function mount(){
     if (typeof unmount === 'function') try { unmount(); } catch (_) {}
-    stage.replaceChildren(); unmount = tab().mount(stage, {...vals});
+    // The surface is the frame's, its inside is the product's
+    const kind = SURFACES.includes(tab().surface || DEMO.surface) ? tab().surface || DEMO.surface : 'bare';
+    const box = document.createElement('div'), body = document.createElement('div');
+    box.className = 'fd-surface fd-s-' + kind; body.className = 'fd-s-body';
+    if (kind === 'window' || kind === 'browser') {
+      const bar = document.createElement('div'); bar.className = 'fd-s-bar';
+      bar.innerHTML = '<i></i><i></i><i></i><span></span>'; bar.lastChild.textContent = tab().surfaceTitle || DEMO.surfaceTitle || DEMO.brand || '';
+      box.append(bar);
+    }
+    box.append(body); stage.replaceChildren(box);
+    unmount = tab().mount(body, {...vals});
   }
   function drawTools(){
     tools.innerHTML = (tab().controls || []).map(c => `<div class="fd-seg" role="group">${c.options.map(([v, label]) =>
@@ -476,9 +510,9 @@
 
   // For screenshots and checks
   window.demo = {
-    tabs:TABS.map(t => ({id:t.id, tab:t.tab, title:t.title, desc:t.desc, who:t.who || '', do:t.do, lvl:t.lvl, caveat:t.caveat || '', reply:t.reply || '', upd:!!t.upd,
+    tabs:TABS.map(t => ({id:t.id, tab:t.tab, title:t.title, desc:t.desc, who:t.who || '', do:t.do, lvl:t.lvl, caveat:t.caveat || '', reply:t.reply || '', upd:!!t.upd, surface:t.surface || DEMO.surface || '',
       code:String(t.mount), hasMount:typeof t.mount === 'function', controls:(t.controls || []).map(c => ({id:c.id, options:c.options.map(o => o[0])}))})),
-    config:{key:DEMO.key, rev:DEMO.rev, brand:DEMO.brand},
+    config:{key:DEMO.key, rev:DEMO.rev, brand:DEMO.brand, lang:DEMO.lang || '', text:!!DEMO.text},
     go:id => go(Math.max(0, TABS.findIndex(t => t.id === id))),
     set:(c, v) => { vals[c] = v; drawTools(); mount(); },
     look:o => { Object.assign(root.dataset, o); place(); },

@@ -1,7 +1,8 @@
-// Feature-verdicts pages (see ../SKILL.md). Node 18+, no dependencies.
+// Try-and-vote pages (see ../SKILL.md). Node 18+, no dependencies.
 //
-//   node demo.mjs init <folder>
-//       Starts a page: copies the example product file to <folder>/demo.html.
+//   node demo.mjs init <folder> [--lang ru|en]
+//       Starts a page: copies the example product file to <folder>/demo.html. Without --lang the
+//       example is in the system's language when that is Russian, otherwise in English.
 //   node demo.mjs check <folder>/demo.html [--shots shots.json]
 //       Puts the frame around the product file, checks the rules, takes pictures of every tab
 //       and every switch position. Writes out/page.html (publish this one), out/standalone.html
@@ -85,17 +86,18 @@ function run(work, file, html, size, extra) {
   const url = win ? 'file:///' + encodeURI(winPath(file).replace(/\\/g, '/')) : pathToFileURL(file).href;
   try { return execFileSync(exe, ['--headless=new', '--disable-gpu', '--hide-scrollbars', '--no-first-run', ...moreArgs, `--window-size=${size.replace('x', ',')}`,
     `--user-data-dir=${there(join(work, 'profile'))}`, '--virtual-time-budget=4000', ...extra.map(a => a.startsWith('--screenshot=') ? '--screenshot=' + there(a.slice(13)) : a), url],
-    { stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8', maxBuffer: 64 << 20 }); }
+    { stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8', maxBuffer: 64 << 20, timeout: 120000, killSignal: 'SIGKILL' }); }
   catch (e) { browserSaid = `${exe}\n${String(e.stderr || e.message).trim().split('\n').slice(-6).join('\n')}`; throw e; }
 }
 // One run that walks every tab and reports what a picture cannot: errors, sideways scroll, page height, an empty mock
 function probe(work, product, size) {
   const late = `<script>setTimeout(()=>{const out={tabs:[],errs:__errs,width:innerWidth,config:window.demo&&demo.config};try{for(const t of demo.tabs){demo.go(t.id);const d=document.documentElement,s=document.getElementById("fd-stage");
-    out.tabs.push({...t,height:d.scrollHeight,wide:d.scrollWidth>innerWidth?d.scrollWidth:0,drawn:s.childElementCount,touch:s.querySelectorAll("button,input,select,textarea,canvas,[role=button],[data-touch]").length})}}catch(e){out.errs.push("demo: "+e.message)}
+    out.tabs.push({...t,height:d.scrollHeight,wide:d.scrollWidth>innerWidth?d.scrollWidth:0,drawn:(s.querySelector(".fd-s-body")||s).childElementCount,touch:s.querySelectorAll("button,input,select,textarea,canvas,[role=button],[data-touch]").length})}}catch(e){out.errs.push("demo: "+e.message)}
     const p=document.createElement("pre");p.id="__probe";p.textContent=btoa(encodeURIComponent(JSON.stringify(out)));document.body.append(p);
     if(parent!==window)parent.postMessage(p.textContent,"*")},300)</script>`;
   let m = null, answered = false;
-  for (const b of exe ? [exe] : browsers()) {
+  // On a loaded machine a headless start can stall: each browser gets two tries
+  for (const b of (exe ? [exe] : browsers()).flatMap(b => [b, b])) {
     exe = b;
     let dom = '';
     try { dom = run(work, join(work, 'probe.html'), wrap(product, EARLY, late), size, ['--dump-dom']); } catch { }
@@ -119,15 +121,17 @@ function withWork(fn) {
 
 // ---------- the rules a script can check ----------
 const state = product => join(dirname(product), '.shown.json');
-const tabHash = t => sha(JSON.stringify([t.tab, t.title, t.desc, t.who, t.do, t.lvl, t.caveat, t.reply, t.controls, t.code]));
+const tabHash = t => sha(JSON.stringify([t.tab, t.title, t.desc, t.who, t.do, t.lvl, t.caveat, t.reply, t.surface, t.controls, t.code]));
 function lint(product, seen) {
   const out = [], bad = m => out.push('PROBLEM ' + m), c = seen.config || {}, tabs = seen.tabs;
   for (const e of new Set(seen.errs)) bad(`script error: ${e}`);
   if (!tabs.length) bad('no tabs: window.DEMO.tabs is empty');
   if (!c.key || !/^[\w-]+$/.test(c.key)) bad('DEMO.key is missing: a short latin name, unique to this page');
   if (c.rev === undefined || c.rev === '') bad('DEMO.rev is missing');
-  const example = resolve(product) === resolve(join(skill, 'assets', 'example.html'));
-  if (!example && !('example' in flags) && (c.key === 'leika-candidates' || /Монстера|class="phone"/.test(readFileSync(product, 'utf8')))) bad('the example product is still in the file (key "leika-candidates", the plant list or the .phone mock): replace all of it');
+  const example = dirname(resolve(product)) === resolve(join(skill, 'assets'));
+  if (!example && !('example' in flags) && (c.key === 'leika-candidates' || /Монстера|Monstera/.test(readFileSync(product, 'utf8')))) bad('the example product is still in the file (key "leika-candidates" or the plant list): replace all of it');
+  // The frame speaks the page's language: the tabs must be written in it too
+  if (c.lang && !['ru', 'en'].includes(c.lang)) bad(`DEMO.lang is "${c.lang}": the frame has "ru" and "en"; for another language set lang:'en' and translate through DEMO.text`);
   const ids = new Set();
   for (const t of tabs) {
     const p = m => bad(`tab "${t.id}": ${m}`);
@@ -137,8 +141,12 @@ function lint(product, seen) {
       if (!t[k]) p(`"${k}" is empty`); else if (t[k].length > max) p(`"${k}" is ${t[k].length} characters, the limit is ${max}: the owner opens the page to touch, not to read`);
     }
     if (t.who.length > 150) p(`"who" is ${t.who.length} characters, the limit is 150`);
+    const cyr = /[а-яё]/i.test(t.title + t.desc + t.do);
+    if (c.lang === 'ru' && !cyr && !c.text) p('DEMO.lang is "ru" but the texts are not in Russian: write the page in one language');
+    if (c.lang === 'en' && cyr && !c.text) p('DEMO.lang is "en" but the texts are in Russian: write the page in one language');
     if (t.reply.length > 320) p(`"reply" is ${t.reply.length} characters, the limit is 320`);
     if (![0, 1, 2].includes(t.lvl)) p('lvl must be 0, 1 or 2');
+    if (t.surface && !['phone', 'tablet', 'window', 'browser', 'bare', 'fill'].includes(t.surface)) p(`surface "${t.surface}" is unknown: phone, tablet, window, browser, bare or fill`);
     if (!t.hasMount) p('no mount(stage, v) function'); else if (!t.drawn) p('mount() drew nothing into the stage');
     else if (!t.touch) p('nothing in the mock can be pressed (no button, input or canvas; mark other touchable things with data-touch)');
     for (const k of t.controls) if (k.options.length < 2) p(`switch "${k.id}" needs at least two options`);
@@ -185,7 +193,7 @@ function check() {
       let tall = seen[kind].tabs.find(t => t.id === s.tab)?.height || 0;
       const state = `try{demo.go(${JSON.stringify(s.tab)});${Object.entries(s.set || {}).map(([c, v]) => `demo.set(${JSON.stringify(c)},${JSON.stringify(v)});`).join('')}
         ${s.js || ''}}catch(e){__errs.push(e.message)}`;
-      if (s.js || s.set) try {
+      if (s.js) try {
         const dom = run(work, join(work, 'measure.html'), wrap(product, EARLY, `<script>setTimeout(()=>{${state}
           setTimeout(()=>{const p=document.createElement("pre");p.id="__probe";p.textContent=String(document.documentElement.scrollHeight);document.body.append(p);if(parent!==window)parent.postMessage(p.textContent,"*")},400)},100)</script>`), `${w}x${h}`, ['--dump-dom']);
         tall = Math.max(tall, Number(dom.match(/<pre id="__probe">(\d+)<\/pre>/)?.[1] || 0));
@@ -193,7 +201,9 @@ function check() {
       const late = `<script>setTimeout(()=>{${state}
         setTimeout(()=>{if(!__errs.length)return;const b=document.createElement("div");b.textContent="SCRIPT ERROR: "+__errs.join(" | ");
         b.style.cssText="position:fixed;z-index:99999;left:0;right:0;top:0;padding:10px;background:#c00;color:#fff;font:700 14px sans-serif";document.body.append(b)},300)},100)</script>`;
-      run(work, join(work, 'shot.html'), wrap(product, EARLY, late), `${w}x${Math.max(h, tall + 24)}`, [`--screenshot=${join(work, 'shot.png')}`]);
+      // A browser that hangs is stopped after a while; one more try, then a PROBLEM line, never a crash
+      for (let attempt = 0; attempt < 2 && !existsSync(join(work, 'shot.png')); attempt++)
+        try { run(work, join(work, 'shot.html'), wrap(product, EARLY, late), `${w}x${Math.max(h, tall + 24)}`, [`--screenshot=${join(work, 'shot.png')}`]); } catch { }
       if (!existsSync(join(work, 'shot.png'))) { problems.push(`PROBLEM no picture for "${s.name}": the browser wrote nothing`); continue; }
       copyFileSync(join(work, 'shot.png'), join(shotsDir, s.name + '.png')); rmSync(join(work, 'shot.png'));
       console.log(join(shotsDir, s.name + '.png'));
@@ -218,11 +228,13 @@ function mark() {
 }
 
 function init() {
-  const dir = resolve(args[0] || 'feature-demo'), to = join(dir, 'demo.html');
+  const dir = resolve(args[0] || 'try-and-vote-page'), to = join(dir, 'demo.html');
+  const sys = (process.env.LC_ALL || process.env.LANG || Intl.DateTimeFormat().resolvedOptions().locale || '').toLowerCase();
+  const lang = ['ru', 'en'].includes(flags.lang) ? flags.lang : sys.startsWith('ru') ? 'ru' : 'en';
   if (existsSync(to)) { console.error('Already there: ' + to); process.exit(2); }
   mkdirSync(dir, { recursive: true });
-  copyFileSync(join(skill, 'assets', 'example.html'), to);
-  console.log(`${to}\n\nIt is a working example for a made-up app. Replace all of it with your product:\n  the mock (drawn from the product's real page or screenshots), its colours and type, the tabs.\nThe frame around it is added by the script; do not copy or restyle it.\nThen: node demo.mjs check ${to}`);
+  copyFileSync(join(skill, 'assets', `example.${lang}.html`), to);
+  console.log(`${to}\n\nIt is a working example for a made-up app, in ${lang === 'ru' ? 'Russian' : 'English'} (--lang ru|en picks the other).\nWrite your page in the language the owner talks to you in and set DEMO.lang to it. Replace all of it with your product:\n  the mock (drawn from the product's real page or screenshots), its colours and type, the tabs.\nThe frame around it is added by the script; do not copy or restyle it.\nThen: node demo.mjs check ${to}`);
 }
 
 // ---------- local server: the page plus a verdicts.json any agent can read from disk ----------

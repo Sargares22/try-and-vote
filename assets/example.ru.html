@@ -4,9 +4,9 @@
      nothing else. The frame (tabs, brief, switches, verdict, storage) is added by
      `demo.mjs`. This one is a worked example for a made-up plant-watering app; replace
      all of it. The mock's look comes from the product itself: its own colours, type, shapes. */
-  .phone{--app:#f7faf8;--card:#ffffff;--leaf:#23804a;--water:#2467c9;--ink:#16241c;--dim:#5d6e64;--line:rgba(22,36,28,.1);
-    width:320px;max-width:100%;height:540px;border-radius:30px;background:var(--app);color:var(--ink);
-    box-shadow:0 0 0 6px #2a332e,0 18px 40px rgba(22,36,28,.28);margin:10px 6px 14px;display:flex;flex-direction:column;overflow:hidden;user-select:none;-webkit-user-select:none}
+  /* The phone itself is the frame's (surface:'phone'); this is the app inside it */
+  .app{--app:#f7faf8;--card:#ffffff;--leaf:#23804a;--water:#2467c9;--ink:#16241c;--dim:#5d6e64;--line:rgba(22,36,28,.1);
+    block-size:100%;background:var(--app);color:var(--ink);display:flex;flex-direction:column;user-select:none;-webkit-user-select:none}
   .app-top{padding:18px 18px 10px;display:flex;align-items:baseline;gap:8px}
   .app-top h2{margin:0;font-size:22px;font-weight:700;flex:1 1 auto}
   .app-top span{font-size:13px;color:var(--dim);font-variant-numeric:tabular-nums}
@@ -52,7 +52,7 @@
   // One mock for every tab: the app's "today" screen. `opt` says which candidate feature is on.
   function todayScreen(stage, opt){
     const list = PLANTS.map(([n, room]) => ({n, room, done:false, later:false}));
-    stage.innerHTML = `<div class="phone"><div class="app-top"><h2>Сегодня</h2><span id="left"></span></div>
+    stage.innerHTML = `<div class="app"><div class="app-top"><h2>Сегодня</h2><span id="left"></span></div>
       <div id="top"></div><div class="plants" id="plants"></div><div class="say" id="say"></div></div>`;
     const el = id => stage.querySelector('#' + id);
     const say = t => { el('say').textContent = t; };
@@ -69,7 +69,7 @@
         + (list.some(p => p.later) ? '<div class="sect">Завтра</div>' + list.map((p, i) => p.later ? row(p, i) : '').join('') : '');
     }
     const later = i => { list[i].later = true; say(`${list[i].n}: напомню завтра`); draw(); };
-    stage.querySelector('.phone').addEventListener('click', e => {
+    stage.querySelector('.app').addEventListener('click', e => {
       if (e.target.closest('#all')) { list.forEach(p => { if (!p.later) p.done = true; }); say('Полито всё, одним касанием'); return draw(); }
       const r = e.target.closest('.plant'); if (!r) return;
       const p = list[r.dataset.i];
@@ -106,7 +106,7 @@
     let hot = false;
     const draw = () => {
       const fix = hot && v.fix === 'on';
-      stage.innerHTML = `<div class="phone"><div class="app-top"><h2>Расписание</h2></div>
+      stage.innerHTML = `<div class="app"><div class="app-top"><h2>Расписание</h2></div>
         <button class="weather${hot ? ' hot' : ''}" id="weather">${svg(hot ? 'sun' : 'cloud')}<span>${hot ? 'Жара, +31° всю неделю' : 'Обычная погода, +21°'}</span><small>сменить</small></button>
         <div class="plants">${PLANTS.map(([n, room, days]) => {
           const d = fix ? Math.max(1, Math.round(days * .7)) : days;
@@ -164,7 +164,15 @@
     key:'leika-candidates',   // names the page in the browser's storage; unique per page
     rev:'1',                  // bump on every publish that changes a tab
     brand:'Лейка', sub:'что брать дальше',
-    lang:'ru',                // frame texts: 'ru' or 'en'
+    lang:'ru',                // the language of the page: 'ru' or 'en'. The frame's own texts follow it
+    // What the mock lives in; the frame draws it, mount() fills the inside. For the whole page here,
+    // or per tab as `surface` in a tab:
+    //   'phone'    a phone screen          'window'   a desktop program's window with a title bar
+    //   'tablet'   a tablet screen         'browser'  a web page in a browser, the title is the address
+    //   'bare'     nothing: one component on the stage, as in a component gallery (the default)
+    //   'fill'     the whole stage, for a full-width layout
+    // surfaceTitle sets the title of a window or the address of a browser.
+    surface:'phone',
     // Optional look of the frame; the defaults are the owner's choice. theme:'light'|'auto', layout:'stack',
     // skin:'graphite', buttons:'calm', font:'onest'|'geist', accent:'#hex' (must read on the theme).
     tabs,

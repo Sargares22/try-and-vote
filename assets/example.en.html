@@ -1,0 +1,181 @@
+<title>Leika candidates</title>
+<style>
+  /* The product file of a feature-verdicts page: everything that is about the product and
+     nothing else. The frame (tabs, brief, switches, verdict, storage) is added by
+     `demo.mjs`. This one is a worked example for a made-up plant-watering app; replace
+     all of it. The mock's look comes from the product itself: its own colours, type, shapes. */
+  /* The phone itself is the frame's (surface:'phone'); this is the app inside it */
+  .app{--app:#f7faf8;--card:#ffffff;--leaf:#23804a;--water:#2467c9;--ink:#16241c;--dim:#5d6e64;--line:rgba(22,36,28,.1);
+    block-size:100%;background:var(--app);color:var(--ink);display:flex;flex-direction:column;user-select:none;-webkit-user-select:none}
+  .app-top{padding:18px 18px 10px;display:flex;align-items:baseline;gap:8px}
+  .app-top h2{margin:0;font-size:22px;font-weight:700;flex:1 1 auto}
+  .app-top span{font-size:13px;color:var(--dim);font-variant-numeric:tabular-nums}
+  .weather{width:calc(100% - 28px);margin:0 14px 8px;padding:10px 12px;border:0;border-radius:12px;background:var(--card);color:inherit;font:inherit;font-size:14px;box-shadow:inset 0 0 0 1px var(--line);display:flex;align-items:center;gap:8px;cursor:pointer;text-align:left}
+  .weather span{flex:1 1 auto}
+  .weather small{font-size:12px;color:var(--water);font-weight:600}
+  .weather.hot{background:#fff3dc;color:#7a4b00}
+  .weather svg{width:18px;height:18px;flex:0 0 18px}
+  .all{width:calc(100% - 28px);margin:0 14px 8px;border:0;border-radius:12px;padding:12px;background:var(--water);color:#fff;font-weight:600;font-size:15px;display:flex;align-items:center;justify-content:center;gap:8px}
+  .all svg{width:18px;height:18px}
+  .plants{flex:1 1 auto;min-height:0;overflow-y:auto;padding:0 14px 8px;display:flex;flex-direction:column;gap:8px}
+  .sect{font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--dim);padding:8px 4px 0}
+  .slot{position:relative;border-radius:14px;background:#e3ecf9;flex:0 0 auto}
+  .slot .under{position:absolute;inset:0;display:flex;align-items:center;justify-content:flex-end;padding-right:16px;font-size:13px;font-weight:600;color:var(--water)}
+  .plant{position:relative;display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:14px;background:var(--card);box-shadow:inset 0 0 0 1px var(--line);touch-action:pan-y}
+  .plant.back{transition:transform .18s ease-out}
+  .plant .leaf{flex:0 0 36px;height:36px;border-radius:11px;background:#e2f1e8;color:var(--leaf);display:grid;place-items:center}
+  .plant .leaf svg{width:20px;height:20px}
+  .plant .nm{flex:1 1 auto;min-width:0;font-size:15px;font-weight:600}
+  .plant .nm small{display:block;font-size:12px;font-weight:400;color:var(--dim)}
+  .plant .nm small em{display:block;font-style:normal;color:#7a4b00;font-weight:600}
+  .plant.done .nm{color:var(--dim);text-decoration:line-through}
+  .plant .later{border:0;background:none;padding:8px 6px;font-size:13px;color:var(--water);font-weight:600}
+  .plant .tick{flex:0 0 34px;height:34px;border-radius:50%;border:2px solid var(--line);background:none;display:grid;place-items:center;color:transparent;padding:0}
+  .plant .tick svg{width:18px;height:18px}
+  .plant.done .tick{background:var(--leaf);border-color:var(--leaf);color:#fff}
+  .plant .days{font-size:13px;color:var(--dim);font-variant-numeric:tabular-nums;white-space:nowrap}
+  .say{flex:0 0 auto;margin:0 14px 14px;padding:9px 12px;border-radius:12px;background:#1b2420;color:#eef2ef;font-size:13px;min-height:37px}
+  @media (prefers-reduced-motion:reduce){.plant.back{transition:none}}
+</style>
+<script>
+(() => {
+  const G = {
+    leaf:'<path d="M5 19c0-8 5-13 14-14 0 9-5 14-13 14z"/><path d="M5 19l8-8"/>',
+    drop:'<path d="M12 3.5c3.5 4.2 5.5 7.2 5.5 10a5.5 5.5 0 0 1-11 0c0-2.8 2-5.8 5.5-10z"/>',
+    check:'<path d="m5 12.5 4.5 4.5L19 7.5"/>',
+    sun:'<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3 7 7M17 17l1.7 1.7M18.7 5.3 17 7M7 17l-1.7 1.7"/>',
+    cloud:'<path d="M7 18.5a4 4 0 0 1-.6-7.95 5.5 5.5 0 0 1 10.7 1A3.5 3.5 0 0 1 17 18.5z"/>',
+  };
+  const svg = n => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${G[n]}</svg>`;
+  const PLANTS = [['Monstera','Living room',6],['Ficus','Living room',9],['Basil','Kitchen',2],['Orchid','Bedroom',7]];
+
+  // One mock for every tab: the app's "today" screen. `opt` says which candidate feature is on.
+  function todayScreen(stage, opt){
+    const list = PLANTS.map(([n, room]) => ({n, room, done:false, later:false}));
+    stage.innerHTML = `<div class="app"><div class="app-top"><h2>Today</h2><span id="left"></span></div>
+      <div id="top"></div><div class="plants" id="plants"></div><div class="say" id="say"></div></div>`;
+    const el = id => stage.querySelector('#' + id);
+    const say = t => { el('say').textContent = t; };
+    const row = (p, i) => `<div class="slot">${opt.swipe && !p.later ? '<span class="under">Tomorrow →</span>' : ''}
+      <div class="plant${p.done ? ' done' : ''}" data-i="${i}"><span class="leaf">${svg('leaf')}</span>
+      <span class="nm">${p.n}<small>${p.room}</small></span>
+      ${opt.laterBtn && !p.done && !p.later ? '<button class="later" data-later>Tomorrow</button>' : ''}
+      ${p.later ? '' : `<button class="tick" data-tick aria-label="Watered">${svg('check')}</button>`}</div></div>`;
+    function draw(){
+      const today = list.filter(p => !p.later), left = today.filter(p => !p.done).length;
+      el('left').textContent = left ? `${left} left` : 'all watered';
+      el('top').innerHTML = opt.all && left > 1 ? `<button class="all" id="all">${svg('drop')}Water all · ${left}</button>` : '';
+      el('plants').innerHTML = list.map((p, i) => p.later ? '' : row(p, i)).join('')
+        + (list.some(p => p.later) ? '<div class="sect">Tomorrow</div>' + list.map((p, i) => p.later ? row(p, i) : '').join('') : '');
+    }
+    const later = i => { list[i].later = true; say(`${list[i].n}: I will remind you tomorrow`); draw(); };
+    stage.querySelector('.app').addEventListener('click', e => {
+      if (e.target.closest('#all')) { list.forEach(p => { if (!p.later) p.done = true; }); say('Everything watered in one tap'); return draw(); }
+      const r = e.target.closest('.plant'); if (!r) return;
+      const p = list[r.dataset.i];
+      if (e.target.closest('[data-later]')) return later(r.dataset.i);
+      if (e.target.closest('[data-tick]')) { p.done = !p.done; say(p.done ? `Watered: ${p.n}` : `${p.n}: mark removed`); draw(); }
+    });
+    // Candidate "snooze", variant "swipe": drag a row to the left
+    if (opt.swipe) {
+      let drag = null;
+      const plants = el('plants');
+      plants.addEventListener('pointerdown', e => {
+        const r = e.target.closest('.plant');
+        if (!r || list[r.dataset.i].later || e.target.closest('button')) return;
+        drag = {r, x:e.clientX, dx:0}; r.classList.remove('back');
+        try { plants.setPointerCapture(e.pointerId); } catch (_) {}
+      });
+      plants.addEventListener('pointermove', e => {
+        if (!drag) return;
+        drag.dx = Math.min(0, e.clientX - drag.x);
+        drag.r.style.transform = `translateX(${drag.dx}px)`;
+      });
+      const end = () => {
+        const d = drag; if (!d) return; drag = null;
+        if (d.dx < -80) return later(d.r.dataset.i);
+        d.r.classList.add('back'); d.r.style.transform = '';
+      };
+      plants.addEventListener('pointerup', end); plants.addEventListener('pointercancel', end);
+    }
+    draw(); say(opt.hello);
+  }
+
+  // The second mock: the schedule, for the weather candidate. The weather strip is the thing to tap.
+  function scheduleScreen(stage, v){
+    let hot = false;
+    const draw = () => {
+      const fix = hot && v.fix === 'on';
+      stage.innerHTML = `<div class="app"><div class="app-top"><h2>Schedule</h2></div>
+        <button class="weather${hot ? ' hot' : ''}" id="weather">${svg(hot ? 'sun' : 'cloud')}<span>${hot ? 'Heat wave, 31° all week' : 'Usual weather, 21°'}</span><small>change</small></button>
+        <div class="plants">${PLANTS.map(([n, room, days]) => {
+          const d = fix ? Math.max(1, Math.round(days * .7)) : days;
+          return `<div class="plant"><span class="leaf">${svg('leaf')}</span><span class="nm">${n}<small>${room}${d < days ? `<em>${days - d} d earlier</em>` : ''}</small></span><span class="days">in ${d} d</span></div>`;
+        }).join('')}</div>
+        <div class="say">${fix ? 'Watering moved earlier, and the app said why' : hot ? 'A heat wave, and the schedule is the same' : 'Tap the weather to start a heat wave'}</div></div>`;
+      stage.querySelector('#weather').onclick = () => { hot = !hot; draw(); };
+    };
+    draw();
+  }
+
+  // One entry per candidate feature.
+  //   id     short latin word: the tab's #anchor and its document id in the verdict store
+  //   tab    the tab's label, two or three words
+  //   lvl    0 does not complicate the product, 1 a little, 2 noticeably
+  //   title, desc   what it is, through the user's eyes, one or two sentences
+  //   who    who proposed it and the opinions, one line
+  //   do     what to press in the mock
+  //   caveat optional: what this demo shows that has not been checked on the real thing
+  //   upd    true on a tab changed since the owner last looked; such tabs are put first
+  //   reply  optional: your answer to the owner's comment on this tab, shown under the comment
+  //   controls  optional switches beside the note: [{id, options:[[value, label], ...]}], first option is the start
+  //   mount(stage, v)  draws the mock into `stage`; v holds the current value of every control,
+  //                    as {controlId: value}. Called again from scratch on every switch and on
+  //                    "reset": the stage is emptied first, so keep the mock's state in variables
+  //                    inside mount and attach listeners only to what you put into the stage.
+  //                    If the mock starts a timer, return a function that stops it: the frame calls
+  //                    it before the next mount.
+  //                    A mock of a desktop window: give it max-inline-size:100% and let its own
+  //                    parts wrap or scroll, because the page is also checked at phone width.
+  const tabs = [
+    {id:'all',tab:'Water all',lvl:0,title:'Water everything in one tap',
+     desc:'When you water all the plants in a row, ticking each one is slow. One button on top marks all of today\'s.',
+     who:'Proposed by Claude. The second consultant agrees but asks to keep one-by-one ticking.',
+     do:'Tick the plants one by one. Then switch to "One button" and press it.',
+     controls:[{id:'mode',options:[['old','As now'],['new','One button']]}],
+     mount:(stage, v) => todayScreen(stage, {all:v.mode === 'new', hello:'Four plants are waiting for water'})},
+    {id:'later',tab:'Tomorrow',lvl:1,title:'Put watering off until tomorrow',
+     desc:'The soil is still wet, too early to water. The plant moves to "Tomorrow" and stops hanging as undone.',
+     who:'Proposed by the second consultant. Open question: a gesture is faster, a button is visible.',
+     do:'Drag a row to the left. Then switch the way and press "Tomorrow" in a row.',
+     controls:[{id:'how',options:[['swipe','Swipe the row'],['btn','Button in the row']]}],
+     mount:(stage, v) => todayScreen(stage, {swipe:v.how === 'swipe', laterBtn:v.how === 'btn', hello:v.how === 'swipe' ? 'Drag a plant to the left' : 'Every plant has a "Tomorrow" button'})},
+    {id:'heat',tab:'Heat',lvl:2,title:'Remind earlier in a heat wave',
+     desc:'In a heat wave the soil dries faster. The app moves watering earlier by itself and says why.',
+     who:'Proposed by Claude. The second consultant is against: the schedule stops being predictable.',
+     caveat:'where the weather comes from and how far to shift. Here the weather is switched by hand and the shift is made up.',
+     do:'Tap the weather row in the app. Then compare "As now" and "Adjusted".',
+     controls:[{id:'fix',options:[['off','As now'],['on','Adjusted']]}],
+     mount:scheduleScreen},
+  ];
+
+
+  window.DEMO = {
+    key:'leika-candidates',   // names the page in the browser's storage; unique per page
+    rev:'1',                  // bump on every publish that changes a tab
+    brand:'Leika', sub:'what to build next',
+    lang:'en',                // the language of the page: 'ru' or 'en'. The frame's own texts follow it
+    // What the mock lives in; the frame draws it, mount() fills the inside. For the whole page here,
+    // or per tab as `surface` in a tab:
+    //   'phone'    a phone screen          'window'   a desktop program's window with a title bar
+    //   'tablet'   a tablet screen         'browser'  a web page in a browser, the title is the address
+    //   'bare'     nothing: one component on the stage, as in a component gallery (the default)
+    //   'fill'     the whole stage, for a full-width layout
+    // surfaceTitle sets the title of a window or the address of a browser.
+    surface:'phone',
+    // Optional look of the frame; the defaults are the owner's choice. theme:'light'|'auto', layout:'stack',
+    // skin:'graphite', buttons:'calm', font:'onest'|'geist', accent:'#hex' (must read on the theme).
+    tabs,
+  };
+})();
+</script>
