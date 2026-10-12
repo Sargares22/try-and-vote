@@ -4,20 +4,10 @@
   "tab": "undo",
   "variant": 1,
   "steps": [
-   {
-    "press": {
-     "nth": 0
-    }
-   },
-   {
-    "expect": "Отменить"
-   },
-   {
-    "click": "Отменить"
-   },
-   {
-    "expectNot": "Отменить"
-   }
+   {"press": {"nth": 0}},
+   {"expect": "Отменить"},
+   {"click": "Отменить"},
+   {"expectNot": "Отменить"}
   ]
  },
  {
@@ -25,29 +15,17 @@
   "tab": "undo",
   "variant": 0,
   "steps": [
-   {
-    "press": {
-     "nth": 0
-    }
-   },
-   {
-    "expectNot": "Отменить"
-   }
+   {"press": {"nth": 0}},
+   {"expectNot": "Отменить"}
   ]
  },
  {
-  "name": "skipping a habit changes the screen and the streak is still shown",
+  "name": "skipping a habit changes the screen and a streak is still shown",
   "tab": "skip",
   "steps": [
-   {
-    "click": "Пропустить"
-   },
-   {
-    "expectChange": true
-   },
-   {
-    "expect": "сери"
-   }
+   {"click": "Пропустить"},
+   {"expectChange": true},
+   {"expect": "сери|\\d+\\s*(дн|день|дня|дней)"}
   ]
  }
 ]

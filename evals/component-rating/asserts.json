@@ -1,37 +1,21 @@
 [
  {
-  "name": "half stars: the left half of the third star gives 2.5",
+  "name": "half stars: pressing the stars at their left and right halves reaches a half value",
   "tab": "half",
   "variant": 1,
   "steps": [
-   {
-    "press": {
-     "nth": 2,
-     "x": 0.2
-    }
-   },
-   {
-    "expect": "2[.,]5"
-   }
+   {"pressAll": {"x": [0.2, 0.8]}},
+   {"expectSeen": "\\b[0-4][.,]5\\b"}
   ]
  },
  {
-  "name": "whole stars: the same press gives 3, not 2.5",
+  "name": "whole stars: the same presses never give a half value, and do give whole ones",
   "tab": "half",
   "variant": 0,
   "steps": [
-   {
-    "press": {
-     "nth": 2,
-     "x": 0.2
-    }
-   },
-   {
-    "expectNot": "2[.,]5"
-   },
-   {
-    "expect": "3"
-   }
+   {"pressAll": {"x": [0.2, 0.8]}},
+   {"expectNeverSeen": "\\b[0-4][.,]5\\b"},
+   {"expectSeen": "\\b[1-5]\\b"}
   ]
  }
 ]

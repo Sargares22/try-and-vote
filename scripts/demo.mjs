@@ -105,8 +105,9 @@ function probe(work, product, size) {
   const late = `<script>setTimeout(()=>{const out={tabs:[],errs:__errs,width:innerWidth,config:window.demo&&demo.config};try{for(const t of demo.tabs){demo.go(t.id);const d=document.documentElement,s=document.getElementById("fd-stage");
     const b=s.querySelector(".fd-s-body")||s,H=d.scrollHeight,W=d.scrollWidth>innerWidth?d.scrollWidth:0,N=b.childElementCount;
     const look=()=>b.innerHTML+[...b.querySelectorAll("*")].map(e=>e.className+e.getAttribute("style")+e.getAttribute("aria-pressed")+(e.value||"")).join("|");
-    const press=[...b.querySelectorAll("button,[role=button],[data-touch],input[type=checkbox],input[type=radio]")].slice(0,12);let reacts=0;
-    for(const p of press){if(!p.isConnected)continue;const was=look();try{p.click()}catch(e){}if(look()!==was)reacts++}
+    const SEL="button,[role=button],[data-touch],input[type=checkbox],input[type=radio]",press=[...b.querySelectorAll(SEL)].slice(0,12);let reacts=0;
+    // a mock may redraw itself on every press: look the next thing up again each time
+    for(let i=0;i<press.length;i++){const p=b.querySelectorAll(SEL)[i];if(!p)break;const was=look();try{p.click()}catch(e){}if(look()!==was)reacts++}
     out.tabs.push({...t,height:H,wide:W,drawn:N,pressable:press.length,reacts,touch:s.querySelectorAll("button,input,select,textarea,canvas,[role=button],[data-touch]").length})}}catch(e){out.errs.push("demo: "+e.message)}
     const p=document.createElement("pre");p.id="__probe";p.textContent=btoa(encodeURIComponent(JSON.stringify(out)));document.body.append(p);
     if(parent!==window)parent.postMessage(p.textContent,"*")},300)</script>`;
@@ -458,13 +459,18 @@ function pressAndRead(work, product, asserts) {
       for(const t of["pointerdown","mousedown","pointerup","mouseup","click"])el.dispatchEvent(new(t[0]=="p"?PointerEvent:MouseEvent)(t,o))};
     const field=()=>{const a=document.activeElement;return a&&/^(INPUT|TEXTAREA)$/.test(a.tagName)&&body().contains(a)?a:body().querySelector("input:not([type=checkbox]):not([type=radio]),textarea,[contenteditable=true]")};
     for(const a of ASSERTS){let why="";try{demo.go(a.tab);if(a.variant!=null){const c=demo.tabs.find(t=>t.id===a.tab).controls[0];if(!c)throw new Error("the tab has no switch");demo.set(c.id,c.options[a.variant])}
-      await wait(80);let was=seen();
+      await wait(80);let was=seen(),log=[];
       for(const s of a.steps){
         if(s.click){const re=new RegExp(s.click,"i"),els=[...body().querySelectorAll("*")].filter(e=>re.test(e.textContent)&&e.getClientRects().length);
           if(!els.length)throw new Error("nothing on screen matches /"+s.click+"/");const el=els.sort((p,q)=>p.textContent.length-q.textContent.length)[0];
           was=seen();fire(el.closest("button,[role=button],[data-touch],a,tr,li")||el)}
         else if(s.press){const all=[...body().querySelectorAll("button,[role=button],[data-touch],input[type=checkbox],input[type=radio]")];const el=all[s.press.nth||0];
           if(!el)throw new Error("there is no pressable thing number "+(s.press.nth||0)+" (found "+all.length+")");was=seen();fire(el,s.press.x)}
+        else if(s.pressAll){const SEL="button,[role=button],[data-touch],input[type=checkbox],input[type=radio]",n=body().querySelectorAll(SEL).length;
+          if(!n)throw new Error("nothing to press");
+          for(let i=0;i<Math.min(n,24);i++)for(const x of s.pressAll.x||[.5]){const el=body().querySelectorAll(SEL)[i];if(!el)continue;fire(el,x);await wait(40);log.push(seen())}}
+        else if(s.expectSeen){if(!log.some(t=>new RegExp(s.expectSeen,"i").test(t)))throw new Error("no press ever showed /"+s.expectSeen+"/")}
+        else if(s.expectNeverSeen){if(log.some(t=>new RegExp(s.expectNeverSeen,"i").test(t)))throw new Error("a press showed /"+s.expectNeverSeen+"/")}
         else if(s.type!=null){const el=field();if(!el)throw new Error("no field to type into");el.focus();
           if(el.isContentEditable)el.textContent=s.type;else Object.getOwnPropertyDescriptor(el.tagName=="INPUT"?HTMLInputElement.prototype:HTMLTextAreaElement.prototype,"value").set.call(el,s.type);
           el.dispatchEvent(new InputEvent("input",{bubbles:true}))}
