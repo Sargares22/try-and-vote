@@ -41,7 +41,7 @@ The server also exits by itself 20 minutes after the page was closed, and runs o
 ## Install
 
 ```sh
-npx skills add <owner>/try-and-vote
+npx skills add Sargares22/try-and-vote
 ```
 
 ## Measured
