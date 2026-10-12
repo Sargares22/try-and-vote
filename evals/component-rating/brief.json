@@ -1,0 +1,21 @@
+{
+ "product": "A star rating control for a shop's review form: five stars, tap to rate.",
+ "lang": "en",
+ "surface": "bare",
+ "look_at": [],
+ "candidates": [
+  {
+   "id": "half",
+   "title": "Half-star ratings",
+   "what": "Tapping the left half of a star gives a half-star rating, so 3.5 is possible.",
+   "press": "Tap the left and the right half of a star. Compare with whole stars.",
+   "variants": [
+    "whole stars",
+    "half stars"
+   ],
+   "lvl": 1,
+   "who": "Proposed by the lead.",
+   "caveat": ""
+  }
+ ]
+}

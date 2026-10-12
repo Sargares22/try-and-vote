@@ -3,9 +3,9 @@
 //   node demo.mjs init <folder> [--lang ru|en]
 //       Starts a page: copies the example product file to <folder>/demo.html. Without --lang the
 //       example is in the system's language when that is Russian, otherwise in English.
-//   node demo.mjs check <folder>/demo.html [--shots shots.json]
-//       Puts the frame around the product file, checks the rules, takes pictures of every tab
-//       and every switch position. Writes out/page.html (publish this one), out/standalone.html
+//   node demo.mjs check <folder>/demo.html [--tab id] [--full] [--shots shots.json]
+//       Puts the frame around the product file, checks the rules, takes pictures: one sheet per
+//       tab with every state on it (--full: separate full-size pictures; --tab: one tab only). Writes out/page.html (publish this one), out/standalone.html
 //       (opens from disk) and out/shots/*.png beside the product file.
 //   node demo.mjs mark <folder>/demo.html
 //       Run right after publishing: remembers what the owner has been shown, so the next
@@ -16,6 +16,11 @@
 //       it prints the answers in piles and exits: start it as a background command and you are woken.
 //   node demo.mjs verdicts <verdicts.json | folder of <id>.json | -> [--page demo.html]
 //       The answers sorted into piles. "-" reads JSON from standard input.
+//   node demo.mjs brief <folder>
+//       Handing the build to another agent: first run writes brief.json to fill in, the next prints
+//       the text to give the builder. check then also checks the page against the brief.
+//   node demo.mjs eval --prepare <dir>   then   node demo.mjs eval <dir>
+//       Can a given model build pages by this skill? Lays out ready briefs, then grades the results.
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
@@ -74,7 +79,7 @@ const EARLY = '<script>window.__errs=[];addEventListener("error",e=>__errs.push(
 function run(work, file, html, size, extra) {
   writeFileSync(file, html);
   const [w, h] = size.split('x').map(Number);
-  if (w < 520) {
+  if (w < 520 && !file.endsWith('sheet.html')) {
     const inner = file;
     file = join(work, 'outer.html');
     size = `520x${h}`;
@@ -84,15 +89,20 @@ function run(work, file, html, size, extra) {
   // A Windows browser started from WSL takes Windows paths
   const win = wsl && exe.endsWith('.exe'), there = p => win ? winPath(p) : p;
   const url = win ? 'file:///' + encodeURI(winPath(file).replace(/\\/g, '/')) : pathToFileURL(file).href;
-  try { return execFileSync(exe, ['--headless=new', '--disable-gpu', '--hide-scrollbars', '--no-first-run', ...moreArgs, `--window-size=${size.replace('x', ',')}`,
+  const t0 = Date.now(); if (process.env.DEMO_TIMING) process.on("exit", () => 0);
+  try { const r = execFileSync(exe, ['--headless=new', '--disable-gpu', '--hide-scrollbars', '--no-first-run', ...moreArgs, `--window-size=${size.replace('x', ',')}`,
     `--user-data-dir=${there(join(work, 'profile'))}`, '--virtual-time-budget=4000', ...extra.map(a => a.startsWith('--screenshot=') ? '--screenshot=' + there(a.slice(13)) : a), url],
-    { stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8', maxBuffer: 64 << 20, timeout: 120000, killSignal: 'SIGKILL' }); }
-  catch (e) { browserSaid = `${exe}\n${String(e.stderr || e.message).trim().split('\n').slice(-6).join('\n')}`; throw e; }
+    { stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8', maxBuffer: 64 << 20, timeout: 120000, killSignal: 'SIGKILL' }); if (process.env.DEMO_TIMING) console.error(basename(file), Date.now() - t0, 'ms'); return r; }
+  catch (e) { if (process.env.DEMO_TIMING) console.error(basename(file), 'FAILED after', Date.now() - t0, 'ms', e.code || e.signal || ''); browserSaid = `${exe}\n${String(e.stderr || e.message).trim().split('\n').slice(-6).join('\n')}`; throw e; }
 }
 // One run that walks every tab and reports what a picture cannot: errors, sideways scroll, page height, an empty mock
 function probe(work, product, size) {
   const late = `<script>setTimeout(()=>{const out={tabs:[],errs:__errs,width:innerWidth,config:window.demo&&demo.config};try{for(const t of demo.tabs){demo.go(t.id);const d=document.documentElement,s=document.getElementById("fd-stage");
-    out.tabs.push({...t,height:d.scrollHeight,wide:d.scrollWidth>innerWidth?d.scrollWidth:0,drawn:(s.querySelector(".fd-s-body")||s).childElementCount,touch:s.querySelectorAll("button,input,select,textarea,canvas,[role=button],[data-touch]").length})}}catch(e){out.errs.push("demo: "+e.message)}
+    const b=s.querySelector(".fd-s-body")||s,H=d.scrollHeight,W=d.scrollWidth>innerWidth?d.scrollWidth:0,N=b.childElementCount;
+    const look=()=>b.innerHTML+[...b.querySelectorAll("*")].map(e=>e.className+e.getAttribute("style")+e.getAttribute("aria-pressed")+(e.value||"")).join("|");
+    const press=[...b.querySelectorAll("button,[role=button],[data-touch],input[type=checkbox],input[type=radio]")].slice(0,12);let reacts=0;
+    for(const p of press){if(!p.isConnected)continue;const was=look();try{p.click()}catch(e){}if(look()!==was)reacts++}
+    out.tabs.push({...t,height:H,wide:W,drawn:N,pressable:press.length,reacts,touch:s.querySelectorAll("button,input,select,textarea,canvas,[role=button],[data-touch]").length})}}catch(e){out.errs.push("demo: "+e.message)}
     const p=document.createElement("pre");p.id="__probe";p.textContent=btoa(encodeURIComponent(JSON.stringify(out)));document.body.append(p);
     if(parent!==window)parent.postMessage(p.textContent,"*")},300)</script>`;
   let m = null, answered = false;
@@ -117,6 +127,51 @@ function withWork(fn) {
   if (wsl) try { base = execFileSync('wslpath', ['-u', execFileSync('cmd.exe', ['/c', 'echo %TEMP%'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()], { encoding: 'utf8' }).trim(); } catch { }
   const work = mkdtempSync(join(base, 'demo-shot-'));
   try { return fn(work); } finally { rmSync(work, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }); }
+}
+
+// ---------- the brief ----------
+// brief.json beside demo.html: {product, lang, surface, look_at:[paths], candidates:[{id, title, what, press, variants:[..], lvl, who, caveat}]}
+const briefOf = product => { const f = join(dirname(product), 'brief.json'); try { return existsSync(f) ? JSON.parse(readFileSync(f, 'utf8')) : null; } catch (e) { return { broken: String(e.message) }; } };
+function briefProblems(b, tabs, c) {
+  const out = [], bad = m => out.push('PROBLEM brief: ' + m);
+  if (b.broken) return ['PROBLEM brief.json does not parse: ' + b.broken];
+  if (!Array.isArray(b.candidates) || !b.candidates.length) return ['PROBLEM brief.json has no candidates'];
+  if (b.lang && c.lang !== b.lang) bad(`the page must be in "${b.lang}", DEMO.lang is "${c.lang || 'not set'}"`);
+  for (const k of b.candidates) {
+    const t = tabs.find(t => t.id === k.id);
+    if (!t) { bad(`candidate "${k.id}" (${k.title || ''}) has no tab with this id`); continue; }
+    const want = (k.variants || []).length, got = Math.max(0, ...t.controls.map(c => c.options.length));
+    if (want > 1 && got < want) bad(`candidate "${k.id}" asks to compare ${want} variants (${k.variants.join(' / ')}), the tab's switch has ${got}`);
+    const surface = k.surface || b.surface;
+    if (surface && t.surface !== surface) bad(`candidate "${k.id}" must be shown on the "${surface}" surface, the tab has "${t.surface || 'bare'}"`);
+    if (k.caveat && !t.caveat) bad(`candidate "${k.id}" has a caveat in the brief and none on the tab`);
+  }
+  for (const t of tabs) if (!b.candidates.some(k => k.id === t.id)) bad(`tab "${t.id}" is not in the brief: build what was asked, nothing more`);
+  return out;
+}
+function brief() {
+  const dir = resolve(args[0] || '.'), file = join(dir, 'brief.json');
+  if (!existsSync(file)) {
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(file, JSON.stringify({ product: 'One or two sentences: what the product is and who uses it.', lang: 'ru', surface: 'phone',
+      look_at: ['paths to the real page, stylesheet or screenshots the mock must be drawn from'],
+      candidates: [{ id: 'short-latin-id', title: 'The feature through the user\'s eyes', what: 'What it does and why, two sentences.', press: 'What the owner should press to feel it.',
+        variants: ['as now', 'new'], lvl: 1, who: 'Who proposed it and the opinions, one line.', caveat: '' }] }, null, 1));
+    console.log(`${file}\n\nFill it in: it is all the builder gets, so name real files in look_at and say what to press.\nThen run this command again for the text to hand to the builder.`);
+    return;
+  }
+  const b = briefOf(join(dir, 'demo.html'));
+  if (b.broken || !Array.isArray(b.candidates)) { console.error('brief.json is broken: ' + (b.broken || 'no candidates')); process.exit(1); }
+  const me = fileURLToPath(import.meta.url);
+  console.log(`Build a try-and-vote page. You are the builder; the decisions are already made and are in the brief.
+
+Skill: ${join(skill, 'SKILL.md')} - read it first and follow it.
+Brief: ${file} - what to build: the product, the language, the surface, the files to draw the mock from, and ${b.candidates.length} candidate feature(s).
+Work in: ${dir} - write demo.html there, beside the brief. Start with: node "${me}" init "${dir}" --lang ${b.lang === 'en' ? 'en' : 'ru'}
+
+Done means: node "${me}" check "${join(dir, 'demo.html')}" prints no PROBLEM lines (it also checks the page against the brief), and you have opened every picture it wrote.
+One tab per candidate, with the candidate's id. Nothing that is not in the brief. Do not run serve, do not publish, do not commit.
+Report: the number of check runs, every PROBLEM line you hit, and anything in the brief you had to guess.`);
 }
 
 // ---------- the rules a script can check ----------
@@ -149,6 +204,7 @@ function lint(product, seen) {
     if (t.surface && !['phone', 'tablet', 'window', 'browser', 'bare', 'fill'].includes(t.surface)) p(`surface "${t.surface}" is unknown: phone, tablet, window, browser, bare or fill`);
     if (!t.hasMount) p('no mount(stage, v) function'); else if (!t.drawn) p('mount() drew nothing into the stage');
     else if (!t.touch) p('nothing in the mock can be pressed (no button, input or canvas; mark other touchable things with data-touch)');
+    else if (t.pressable && !t.reacts) p(`${t.pressable} thing(s) in the mock can be pressed and none of them changes anything on screen: the feature has to work, with a visible answer to every press`);
     for (const k of t.controls) if (k.options.length < 2) p(`switch "${k.id}" needs at least two options`);
     if (t.wide) p(`scrolls sideways: ${t.wide}px in a ${seen.width}px window`);
   }
@@ -170,13 +226,15 @@ function lint(product, seen) {
 function check() {
   const product = need(args[0]), dir = join(dirname(product), 'out'), shotsDir = join(dir, 'shots');
   const sizes = { desktop: flags.desktop || '1280x860', phone: flags.phone || '400x860' };
-  rmSync(shotsDir, { recursive: true, force: true });
+  if (!flags.tab) rmSync(shotsDir, { recursive: true, force: true });
   mkdirSync(shotsDir, { recursive: true });
   writeFileSync(join(dir, 'page.html'), compose(product));
   writeFileSync(join(dir, 'standalone.html'), wrap(product));
   const problems = withWork(work => {
     const seen = { desktop: probe(work, product, sizes.desktop), phone: probe(work, product, sizes.phone) };
     const problems = lint(product, seen.desktop);
+    const b = briefOf(product);
+    if (b) problems.push(...briefProblems(b, seen.desktop.tabs, seen.desktop.config || {}));
     for (const t of seen.phone.tabs) if (t.wide) problems.push(`PROBLEM tab "${t.id}": scrolls sideways at phone width: ${t.wide}px in a ${seen.phone.width}px window`);
     // Every tab as it opens, at both widths; then every other position of every switch, one at a time
     const shots = [];
@@ -187,33 +245,63 @@ function check() {
     // shots.json: states only a script reaches. [{name, tab, set:{switch:value}, js:"...", kind:"phone"}]
     const extra = flags.shots || (existsSync(join(dirname(product), 'shots.json')) ? join(dirname(product), 'shots.json') : null);
     if (extra) shots.push(...JSON.parse(readFileSync(extra, 'utf8')));
-    for (const s of shots) {
+    const list = shots.filter(s => !flags.tab || s.tab === flags.tab);
+    if (flags.tab && !list.length) problems.push(`PROBLEM --tab "${flags.tab}": no such tab`);
+    const stateOf = s => `try{demo.go(${JSON.stringify(s.tab)});${Object.entries(s.set || {}).map(([c, v]) => `demo.set(${JSON.stringify(c)},${JSON.stringify(v)});`).join('')}
+        ${s.js || ''}}catch(e){__errs.push(e.message)}`;
+    const banner = `if(__errs.length){const b=document.createElement("div");b.textContent="SCRIPT ERROR: "+__errs.join(" | ");
+        b.style.cssText="position:fixed;z-index:99999;left:0;right:0;top:0;padding:10px;background:#c00;color:#fff;font:700 14px sans-serif";document.body.append(b)}`;
+    if ('full' in flags) for (const s of list) {
+      // Separate full-size pictures: one browser run each
       const kind = s.kind === 'phone' ? 'phone' : 'desktop';
       const [w, h] = sizes[kind].split('x').map(Number);
       let tall = seen[kind].tabs.find(t => t.id === s.tab)?.height || 0;
-      const state = `try{demo.go(${JSON.stringify(s.tab)});${Object.entries(s.set || {}).map(([c, v]) => `demo.set(${JSON.stringify(c)},${JSON.stringify(v)});`).join('')}
-        ${s.js || ''}}catch(e){__errs.push(e.message)}`;
       if (s.js) try {
-        const dom = run(work, join(work, 'measure.html'), wrap(product, EARLY, `<script>setTimeout(()=>{${state}
+        const dom = run(work, join(work, 'measure.html'), wrap(product, EARLY, `<script>setTimeout(()=>{${stateOf(s)}
           setTimeout(()=>{const p=document.createElement("pre");p.id="__probe";p.textContent=String(document.documentElement.scrollHeight);document.body.append(p);if(parent!==window)parent.postMessage(p.textContent,"*")},400)},100)</script>`), `${w}x${h}`, ['--dump-dom']);
         tall = Math.max(tall, Number(dom.match(/<pre id="__probe">(\d+)<\/pre>/)?.[1] || 0));
       } catch { }
-      const late = `<script>setTimeout(()=>{${state}
-        setTimeout(()=>{if(!__errs.length)return;const b=document.createElement("div");b.textContent="SCRIPT ERROR: "+__errs.join(" | ");
-        b.style.cssText="position:fixed;z-index:99999;left:0;right:0;top:0;padding:10px;background:#c00;color:#fff;font:700 14px sans-serif";document.body.append(b)},300)},100)</script>`;
-      // A browser that hangs is stopped after a while; one more try, then a PROBLEM line, never a crash
+      const late = `<script>setTimeout(()=>{${stateOf(s)} setTimeout(()=>{${banner}},300)},100)</script>`;
       for (let attempt = 0; attempt < 2 && !existsSync(join(work, 'shot.png')); attempt++)
         try { run(work, join(work, 'shot.html'), wrap(product, EARLY, late), `${w}x${Math.max(h, tall + 24)}`, [`--screenshot=${join(work, 'shot.png')}`]); } catch { }
       if (!existsSync(join(work, 'shot.png'))) { problems.push(`PROBLEM no picture for "${s.name}": the browser wrote nothing`); continue; }
       copyFileSync(join(work, 'shot.png'), join(shotsDir, s.name + '.png')); rmSync(join(work, 'shot.png'));
       console.log(join(shotsDir, s.name + '.png'));
     }
+    else for (const id of [...new Set(list.map(s => s.tab))]) {
+      // One sheet per tab: every state of the tab side by side, in one browser run. Desktop states
+      // at half size, phone states at three quarters; each cell grows to the height its page reports.
+      const cells = list.filter(s => s.tab === id), GAP = 14, CAP = 26;
+      let rowW = 0, x = GAP, sheetH = GAP, rowH = 0;
+      const html = cells.map((s, i) => {
+        const kind = s.kind === 'phone' ? 'phone' : 'desktop', k = kind === 'phone' ? .75 : .5;
+        const [w, h] = sizes[kind].split('x').map(Number);
+        writeFileSync(join(work, `c${i}.html`), wrap(product, EARLY, `<script>setTimeout(()=>{${stateOf(s)}
+          setTimeout(()=>{${banner};parent.postMessage({i:${i},h:document.documentElement.scrollHeight},"*")},400)},100)</script>`));
+        // room for the row this cell lands in: the tab's measured height plus slack for a taller state
+        const tall = Math.max(h, (seen[kind].tabs.find(t => t.id === id)?.height || 0) + 120) * k + CAP;
+        if (x + w * k + GAP > 1340) { x = GAP; sheetH += rowH + GAP; rowH = 0; }
+        x += w * k + GAP; rowW = Math.max(rowW, x); rowH = Math.max(rowH, tall);
+        return `<figure><figcaption>${s.name}</figcaption><div class="cell" id="c${i}" style="width:${w * k}px;height:${h * k}px"><iframe src="c${i}.html" style="width:${w}px;height:${h}px;transform:scale(${k})" data-k="${k}"></iframe></div></figure>`;
+      }).join('');
+      sheetH += rowH + GAP;
+      const sheet = `<!doctype html><meta charset=utf8><style>body{margin:0;padding:${GAP}px;background:#5a5a5a;display:flex;flex-wrap:wrap;gap:${GAP}px;align-items:flex-start;font:600 14px system-ui,sans-serif;color:#fff}
+        figure{margin:0}figcaption{height:${CAP}px}.cell{overflow:hidden;background:#000}iframe{display:block;border:0;transform-origin:0 0}</style>${html}
+        <script>addEventListener("message",e=>{const d=e.data;if(!d||typeof d.h!=="number")return;const c=document.getElementById("c"+d.i),f=c.firstChild,k=Number(f.dataset.k);
+          const h=Math.max(d.h,parseFloat(f.style.height));f.style.height=h+"px";c.style.height=h*k+"px"})</script>`;
+      const png = join(work, 'sheet.png');
+      for (let attempt = 0; attempt < 2 && !existsSync(png); attempt++)
+        try { run(work, join(work, 'sheet.html'), sheet, `${Math.ceil(Math.max(rowW, 700))}x${Math.ceil(sheetH)}`, [`--screenshot=${png}`]); } catch { }
+      if (!existsSync(png)) { problems.push(`PROBLEM no picture for tab "${id}": the browser wrote nothing`); continue; }
+      copyFileSync(png, join(shotsDir, id + '.png')); rmSync(png);
+      console.log(`${join(shotsDir, id + '.png')}   (${cells.map(s => s.name).join(', ')})`);
+    }
     return problems;
   });
   console.log('');
   for (const p of problems) console.log(p);
   console.log(problems.length ? `\n${problems.length} problem(s). Fix them and check again; do not publish.`
-    : `No problems a script can see. Now open every picture above and look at it:\n  an extra or missing element, something off screen, a wrong icon, a mock that does not look like the product.\n  A state the pictures do not show (after a gesture, a timer, several presses): add it to shots.json beside the product file and check again.\n\nPublish: ${join(dir, 'page.html')}\n  Claude: Artifact tool, capabilities {"db":{}}; keep the same file path to keep the address.\n  Elsewhere: node demo.mjs serve ${args[0]}   or send out/standalone.html\nThen: node demo.mjs mark ${args[0]}`);
+    : `No problems a script can see. Now open every picture above and look at it: one sheet per tab, every state of the tab on it.\n  Look for an extra or missing element, something off screen, a wrong icon, a mock that does not look like the product.\n  A detail too small on the sheet: check with --full for separate full-size pictures. After changing one tab: --tab <id>.\n  A state the pictures do not show (after a gesture, a timer, several presses): add it to shots.json beside the product file.\n\nPublish: ${join(dir, 'page.html')}\n  Claude: Artifact tool, capabilities {"db":{}}; keep the same file path to keep the address.\n  Elsewhere: node demo.mjs serve ${args[0]}   or send out/standalone.html\nThen: node demo.mjs mark ${args[0]}`);
   process.exitCode = problems.length ? 1 : 0;
 }
 
@@ -312,4 +400,31 @@ function verdicts(src = args[0]) {
     + (flags.page ? '' : '\nTabs the owner never touched are not in the store; pass --page demo.html to list them.'));
 }
 
-({ init, check, mark, serve, verdicts }[cmd] || (() => { console.error(readFileSync(fileURLToPath(import.meta.url), 'utf8').split('\n').slice(0, 15).join('\n')); process.exit(2); }))();
+// ---------- eval: can a given builder do the job? ----------
+// evals/<case>/brief.json are ready briefs. "eval --prepare <dir>" lays them out and prints what to hand
+// to each builder; "eval <dir>" grades what the builders left there.
+function evalCmd() {
+  const dir = resolve(args[0] || 'eval-run'), cases = readdirSync(join(skill, 'evals'));
+  if ('prepare' in flags) {
+    for (const c of cases) { mkdirSync(join(dir, c), { recursive: true }); copyFileSync(join(skill, 'evals', c, 'brief.json'), join(dir, c, 'brief.json')); }
+    console.log(`${cases.length} case(s) in ${dir}: ${cases.join(', ')}\nFor each, hand the builder the text printed by:  node demo.mjs brief <case folder>\nWhen they are done:  node demo.mjs eval ${dir}`);
+    return;
+  }
+  const me = fileURLToPath(import.meta.url);
+  let passed = 0, all = 0;
+  for (const c of readdirSync(dir).filter(c => existsSync(join(dir, c, 'brief.json')))) {
+    all++;
+    const page = join(dir, c, 'demo.html');
+    if (!existsSync(page)) { console.log(`FAIL  ${c}: no demo.html`); continue; }
+    let out = '';
+    try { out = execFileSync(process.execPath, [me, 'check', page], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }); } catch (e) { out = String(e.stdout || '') + String(e.stderr || ''); }
+    const bad = out.split('\n').filter(l => l.startsWith('PROBLEM') || l.startsWith('No browser') || l.startsWith('The page did not start'));
+    const ok = !bad.length && out.includes('No problems a script can see');
+    if (ok) passed++;
+    console.log(`${ok ? 'PASS' : 'FAIL'}  ${c}${bad.length ? '\n      ' + bad.join('\n      ') : ''}`);
+  }
+  console.log(`\n${passed} of ${all} passed the script's rules. A pass still needs eyes: open out/shots in each case folder.`);
+  process.exitCode = passed === all && all ? 0 : 1;
+}
+
+({ init, check, mark, serve, verdicts, brief, eval: evalCmd }[cmd] || (() => { console.error(readFileSync(fileURLToPath(import.meta.url), 'utf8').split('\n').slice(0, 22).join('\n')); process.exit(2); }))();

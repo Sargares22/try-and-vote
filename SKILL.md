@@ -12,9 +12,12 @@ Edge on the machine (inside WSL it uses the Windows one). No other dependencies,
 ```
 node D init <folder> [--lang ru|en]  start: writes <folder>/demo.html, a working example
 node D check <folder>/demo.html      build, check the rules, take pictures -> out/page.html, out/shots
+                                     (--tab <id> after changing one tab, --full for full-size pictures)
 node D serve <folder>/demo.html      show it to the owner; exits with the answers when they press "done"
 node D mark <folder>/demo.html       after the owner has seen it: remember what was shown
 node D verdicts <answers> --page <folder>/demo.html     answers from elsewhere, in piles
+node D brief <folder>                hand the build to another agent: a brief to fill, then the text to give it
+node D eval --prepare <dir> / eval <dir>     can a given model build by this skill: ready briefs, then grades
 ```
 
 Write the page in the language the owner talks to you in and set `lang` to it (`ru` or `en`;
@@ -45,6 +48,11 @@ several presses, a timer that ran out) goes into `shots.json` beside `demo.html`
   `out_dir`), pass that folder to `verdicts`. The artifact store needs a paid Claude plan;
   do not make it the only way.
 - **No server possible:** send `out/standalone.html`; the owner presses "copy answers".
+
+Build the page in a fresh thread or a subagent, not in a long conversation: every step re-reads
+the whole context, and the same page costs many times more there. The lead fills `brief.json`
+(`brief`), the builder gets the printed text and nothing else, and `check` holds the page to
+the brief. Before trusting a cheaper model as the builder, run `eval` with it once.
 
 What no script can check, so it is on you:
 

@@ -1,0 +1,31 @@
+{
+ "product": "Papka: a desktop file manager for Windows. A window with a folder tree on the left, a file list on the right and a toolbar above the list.",
+ "lang": "en",
+ "surface": "window",
+ "look_at": [],
+ "candidates": [
+  {
+   "id": "preview",
+   "title": "Preview pane for the selected file",
+   "what": "Selecting a file shows its preview and details in a pane on the right, without opening it.",
+   "press": "Select a file in the list. Then switch the variant.",
+   "variants": [
+    "as now",
+    "preview pane"
+   ],
+   "lvl": 1,
+   "who": "Proposed by the lead.",
+   "caveat": ""
+  },
+  {
+   "id": "rename",
+   "title": "Rename in place",
+   "what": "Pressing Rename turns the file name into an editable field right in the list; Enter saves it.",
+   "press": "Select a file, press Rename, type a new name and press Enter.",
+   "variants": [],
+   "lvl": 0,
+   "who": "Proposed by the lead.",
+   "caveat": ""
+  }
+ ]
+}
