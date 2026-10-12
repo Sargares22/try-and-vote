@@ -76,6 +76,30 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   say(out.includes('Stopped:') && gone, '"stop" ends the server', out);
   if (!gone) child.kill();
 }
+{
+  // what the server must refuse
+  writeFileSync(join(work, '.secret'), 'no');
+  writeFileSync(join(work, 'notes.txt'), 'no');
+  const child = spawn(process.execPath, [D, 'serve', page, '--port', '4790'], { stdio: ['ignore', 'pipe', 'pipe'] });
+  try {
+    let said = ''; child.stdout.on('data', d => { said += d; });
+    for (let i = 0; i < 40 && !said.includes('Page:'); i++) await wait(250);
+    const port = (said.match(/127\.0\.0\.1:(\d+)/) || [])[1], u = `http://127.0.0.1:${port}`;
+    const code = (path, init) => fetch(u + path, init).then(r => r.status, () => 0);
+    say(await code('/%') === 400 && await code('/') === 200, 'a malformed address gets an error and the server lives on');
+    say(await code('/.secret') === 404 && await code('/notes.txt') === 404 && await code('/verdicts.json') === 404, 'dot-files and files a page has no use for are not served');
+    say(await code('/__done', { method: 'POST', headers: { origin: 'http://evil.example' } }) === 403, 'a write from another site is refused');
+    say(await code('/__stop', { method: 'POST', headers: { 'x-token': 'guess' } }) === 403 && await code('/') === 200, 'stop without the server\'s own token is refused');
+    say(await code('/__verdicts/all', { method: 'PUT', body: 'x'.repeat(3e5) }) !== 200 && await code('/') === 200, 'an oversized answer is refused and the server lives on');
+    await fetch(u + '/__verdicts/all', { method: 'PUT', body: JSON.stringify({ verdict: 'maybe', comment: 7, at: 5, extra: 'x' }) });
+    const kept = JSON.parse(readFileSync(join(work, 'verdicts.json'), 'utf8')).all;
+    say(kept.verdict === '' && kept.comment === '7' && kept.at === '5' && !('extra' in kept), 'an answer is stored as an answer: known fields, as text');
+  } finally { run(['stop', page]); child.kill(); }
+}
+{
+  const bad = run(['serve', page, '--port', 'nope'], { timeout: 20000 });
+  say(bad.includes('--port must be a number'), 'a port that is not a number is refused with a plain message', bad.slice(0, 200));
+}
 
 rmSync(work, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
 console.log(failed ? `\n${failed} test(s) failed.` : '\nAll tests passed.');

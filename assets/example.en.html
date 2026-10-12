@@ -91,12 +91,13 @@
         drag.dx = Math.min(0, e.clientX - drag.x);
         drag.r.style.transform = `translateX(${drag.dx}px)`;
       });
-      const end = () => {
+      // A cancelled gesture puts the row back; only a finished one moves the plant
+      const end = done => {
         const d = drag; if (!d) return; drag = null;
-        if (d.dx < -80) return later(d.r.dataset.i);
+        if (done && d.dx < -80) return later(d.r.dataset.i);
         d.r.classList.add('back'); d.r.style.transform = '';
       };
-      plants.addEventListener('pointerup', end); plants.addEventListener('pointercancel', end);
+      plants.addEventListener('pointerup', () => end(true)); plants.addEventListener('pointercancel', () => end(false));
     }
     draw(); say(opt.hello);
   }

@@ -413,7 +413,10 @@
   let store = null, typeTimer = null;
   try { Object.assign(V, JSON.parse(lsGet('') || '{}')); } catch (_) {}
   const vYes = $('fd-yes'), vLater = $('fd-later'), vNo = $('fd-no'), vText = $('fd-comment'), vState = $('fd-vstate');
-  const clean = x => ({verdict:['yes', 'later', 'no'].includes(x.verdict) ? x.verdict : '', comment:String(x.comment || ''), at:String(x.at || '')});
+  const clean = x => { x = x && typeof x === 'object' ? x : {}; return {verdict:['yes', 'later', 'no'].includes(x.verdict) ? x.verdict : '', comment:String(x.comment || ''), at:String(x.at || '')}; };
+  // Answers the outside store has not confirmed. While there are any, the page does not say "sent".
+  const unsent = new Set();
+  const push = (id, doc) => { unsent.add(id); return chains[id] = (chains[id] || Promise.resolve()).then(() => store.save(id, doc)).then(() => { unsent.delete(id); return true; }, () => false); };
   const undecided = () => { for (let k = 1; k <= TABS.length; k++) { const i = (cur + k) % TABS.length; if (!V[TABS[i].id]?.verdict) return i; } return -1; };
 
   function showVerdict(fillText){
@@ -440,8 +443,7 @@
     if (!store) { dirty.delete(id); return tell(T.saved.local); }
     tell(T.saving);
     const doc = docOf(id);
-    chains[id] = (chains[id] || Promise.resolve()).then(() => store.save(id, doc)).then(
-      () => { dirty.delete(id); tell(T.saved[store.name]); }, () => tell(T.failed));
+    push(id, doc).then(ok => { if (ok) { dirty.delete(id); tell(T.saved[store.name]); } else { tell(T.failed); $('fd-copy').hidden = false; } });
   }
   // What came from outside wins, unless this browser holds a newer answer: that one is sent out
   function merge(remote){
@@ -453,10 +455,7 @@
     lsSet('', JSON.stringify(V));
     for (const id of Object.keys(V)) {
       const r = remote[id], mine = V[id];
-      if (store && (mine.verdict || mine.comment) && (!r || (mine.at || '') > String(r.at || ''))) {
-        const doc = docOf(id);
-        chains[id] = (chains[id] || Promise.resolve()).then(() => store.save(id, doc)).catch(() => {});
-      }
+      if (store && mine.at && (r ? mine.at > String(r.at || '') : mine.verdict || mine.comment)) push(id, docOf(id));
     }
     showVerdict(true);
   }
@@ -473,7 +472,9 @@
   $('fd-done').addEventListener('click', async () => {
     if (typeTimer) flushText(tab().id);
     await Promise.all(Object.values(chains));
-    fetch('__done', {method:'POST'}).then(r => { vState.textContent = r.ok ? T.sent : T.notSent; }, () => { vState.textContent = T.notSent; });
+    await Promise.all([...unsent].map(id => push(id, docOf(id))));
+    if (unsent.size) { vState.textContent = T.notSent; $('fd-copy').hidden = false; return; }
+    fetch('__done', {method:'POST'}).then(r => { vState.textContent = r.ok ? T.sent : T.notSent; if (!r.ok) $('fd-copy').hidden = false; }, () => { vState.textContent = T.notSent; $('fd-copy').hidden = false; });
   });
   function flushText(id){
     clearTimeout(typeTimer); typeTimer = null;
@@ -504,7 +505,7 @@
     try { data = JSON.parse(ioText.value); } catch (_) {}
     const ids = data && typeof data === 'object' ? Object.keys(data).filter(id => TABS.some(t => t.id === id)) : [];
     if (!ids.length) { ioState.textContent = T.badJson; return; }
-    for (const id of ids) { V[id] = clean(data[id]); dirty.add(id); save(id, true); }
+    for (const id of ids) { if (!data[id] || typeof data[id] !== 'object') continue; V[id] = clean(data[id]); dirty.add(id); save(id, true); }
     showVerdict(true); ioState.textContent = T.loaded(ids.length);
   });
 
@@ -532,7 +533,7 @@
     }
     if (!store) return;
     // The answers reach the agent by themselves: no copy and paste, and with the local server a "done" button
-    $('fd-copy').hidden = $('fd-import').hidden = true; $('fd-done').hidden = store.name !== 'file';
+    $('fd-copy').hidden = $('fd-import').hidden = true;
     // The local server stops by itself once no open page has called for a while
     if (store.name === 'file') {
       fetch('__alive', {method:'POST', body:JSON.stringify(TABS.map(t => ({id:t.id, title:t.title})))}).catch(() => {});
@@ -540,6 +541,7 @@
     }
     try { merge(await store.load()); } catch (_) {}
     if (store.watch) store.watch(merge);
+    $('fd-done').hidden = store.name !== 'file';
   })();
 })();
 </script>

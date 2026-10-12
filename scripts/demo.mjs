@@ -26,7 +26,7 @@
 //       Can a given model build pages by this skill? Lays out ready briefs, then grades the results.
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { networkInterfaces, release, tmpdir } from 'node:os';
 import { basename, dirname, extname, join, resolve, sep } from 'node:path';
@@ -39,6 +39,14 @@ const flags = {}, args = [];
 const SWITCHES = ['prepare', 'full', 'lan', 'stay', 'example', 'no-pictures', 'all'];
 for (let i = 0; i < rest.length; i++) rest[i].startsWith('--') ? flags[rest[i].slice(2)] = !SWITCHES.includes(rest[i].slice(2)) && rest[i + 1] && !rest[i + 1].startsWith('--') ? rest[++i] : '' : args.push(rest[i]);
 const sha = s => createHash('sha1').update(s).digest('hex').slice(0, 12);
+// A command printed for someone to run next: full path of this script, paths in quotes
+const q = p => `"${p}"`, me = () => `node ${q(fileURLToPath(import.meta.url))}`;
+function number(name, def, min, max) {
+  if (!(name in flags)) return def;
+  const n = Number(flags[name]);
+  if (!Number.isFinite(n) || n < min || n > max) { console.error(`--${name} must be a number from ${min} to ${max}, got "${flags[name]}"`); process.exit(2); }
+  return n;
+}
 function need(file) {
   if (!file || !existsSync(file) || statSync(file).isDirectory()) { console.error('No such product file: ' + (file || '(not given)')); process.exit(2); }
   return resolve(file);
@@ -104,11 +112,12 @@ function run(work, file, html, size, extra) {
 function probe(work, product, size) {
   const late = `<script>setTimeout(()=>{const out={tabs:[],errs:__errs,width:innerWidth,config:window.demo&&demo.config};try{for(const t of demo.tabs){demo.go(t.id);const d=document.documentElement,s=document.getElementById("fd-stage");
     const b=s.querySelector(".fd-s-body")||s,H=d.scrollHeight,W=d.scrollWidth>innerWidth?d.scrollWidth:0,N=b.childElementCount;
-    const look=()=>b.innerHTML+[...b.querySelectorAll("*")].map(e=>e.className+e.getAttribute("style")+e.getAttribute("aria-pressed")+(e.value||"")).join("|");
+    const look=()=>b.innerHTML+[...b.querySelectorAll("*")].map(e=>e.className+e.getAttribute("style")+e.getAttribute("aria-pressed")+(e.value||"")+(e.checked?"✓":"")).join("|");
+    let hh=5381;for(const ch of b.innerHTML)hh=(hh*33^ch.charCodeAt(0))>>>0;
     const SEL="button,[role=button],[data-touch],input[type=checkbox],input[type=radio]",press=[...b.querySelectorAll(SEL)].slice(0,12);let reacts=0;
     // a mock may redraw itself on every press: look the next thing up again each time
     for(let i=0;i<press.length;i++){const p=b.querySelectorAll(SEL)[i];if(!p)break;const was=look();try{p.click()}catch(e){}if(look()!==was)reacts++}
-    out.tabs.push({...t,height:H,wide:W,drawn:N,pressable:press.length,reacts,touch:s.querySelectorAll("button,input,select,textarea,canvas,[role=button],[data-touch]").length})}}catch(e){out.errs.push("demo: "+e.message)}
+    out.tabs.push({...t,height:H,wide:W,drawn:N,dom:hh,pressable:press.length,reacts,touch:s.querySelectorAll("button,input,select,textarea,canvas,[role=button],[data-touch]").length})}}catch(e){out.errs.push("demo: "+e.message)}
     const p=document.createElement("pre");p.id="__probe";p.textContent=btoa(encodeURIComponent(JSON.stringify(out)));document.body.append(p);
     if(parent!==window)parent.postMessage(p.textContent,"*")},300)</script>`;
   let m = null, answered = false;
@@ -182,7 +191,7 @@ Report: the number of check runs, every PROBLEM line you hit, and anything in th
 
 // ---------- the rules a script can check ----------
 const state = product => join(dirname(product), '.shown.json');
-const tabHash = t => sha(JSON.stringify([t.tab, t.title, t.desc, t.who, t.do, t.lvl, t.caveat, t.reply, t.surface, t.controls, t.code]));
+const tabHash = t => sha(JSON.stringify([t.tab, t.title, t.desc, t.who, t.do, t.lvl, t.caveat, t.reply, t.surface, t.controls, t.code, t.dom]));
 function lint(product, seen) {
   const out = [], bad = m => out.push('PROBLEM ' + m), c = seen.config || {}, tabs = seen.tabs;
   for (const e of new Set(seen.errs)) bad(`script error: ${e}`);
@@ -215,8 +224,11 @@ function lint(product, seen) {
     if (t.wide) p(`scrolls sideways: ${t.wide}px in a ${seen.width}px window`);
   }
   // What changed since the owner was last shown the page must be findable
-  if (existsSync(state(product))) {
-    const was = JSON.parse(readFileSync(state(product), 'utf8')), file = sha(readFileSync(product, 'utf8'));
+  let was = null;
+  if (existsSync(state(product))) try { was = JSON.parse(readFileSync(state(product), 'utf8')); if (!was || typeof was.tabs !== 'object') throw new Error('no tabs in it'); }
+    catch (e) { was = null; bad(`.shown.json beside the page is broken (${e.message}): delete it and run mark again after showing the page`); }
+  if (was) {
+    const file = sha(readFileSync(product, 'utf8'));
     if (was.file !== file) {
       if (String(was.rev) === String(c.rev)) bad(`the page changed since it was shown, but DEMO.rev is still "${c.rev}": bump it, or the owner's browser will not open the updated tab`);
       const changed = tabs.filter(t => was.tabs[t.id] !== tabHash(t));
@@ -241,6 +253,10 @@ function check() {
     const problems = lint(product, seen.desktop);
     const b = briefOf(product);
     if (b) problems.push(...briefProblems(b, seen.desktop.tabs, seen.desktop.config || {}));
+    // a page can break at phone width only: its errors and missing tabs count too
+    for (const e of new Set(seen.phone.errs)) if (!seen.desktop.errs.includes(e)) problems.push(`PROBLEM script error at phone width: ${e}`);
+    if (seen.phone.tabs.length < seen.desktop.tabs.length) problems.push('PROBLEM at phone width the page stops before all tabs have opened');
+    for (const t of seen.phone.tabs) if (t.hasMount && !t.drawn) problems.push(`PROBLEM tab "${t.id}": draws nothing at phone width`);
     for (const t of seen.phone.tabs) if (t.wide) problems.push(`PROBLEM tab "${t.id}": scrolls sideways at phone width: ${t.wide}px in a ${seen.phone.width}px window`);
     // Every tab as it opens, at both widths; then every other position of every switch, one at a time
     const shots = [];
@@ -250,7 +266,8 @@ function check() {
     }
     // shots.json: states only a script reaches. [{name, tab, set:{switch:value}, js:"...", kind:"phone"}]
     const extra = flags.shots || (existsSync(join(dirname(product), 'shots.json')) ? join(dirname(product), 'shots.json') : null);
-    if (extra) shots.push(...JSON.parse(readFileSync(extra, 'utf8')));
+    if (extra) try { const more = JSON.parse(readFileSync(extra, 'utf8')); if (!Array.isArray(more)) throw new Error('it must be a list'); shots.push(...more.filter(s => s && s.name && s.tab)); }
+      catch (e) { problems.push(`PROBLEM ${basename(extra)} is broken (${e.message})`); }
     const list = 'no-pictures' in flags ? [] : shots.filter(s => !flags.tab || s.tab === flags.tab);
     if (flags.tab && !list.length && !('no-pictures' in flags)) problems.push(`PROBLEM --tab "${flags.tab}": no such tab`);
     const stateOf = s => `try{demo.go(${JSON.stringify(s.tab)});${Object.entries(s.set || {}).map(([c, v]) => `demo.set(${JSON.stringify(c)},${JSON.stringify(v)});`).join('')}
@@ -307,7 +324,7 @@ function check() {
   console.log('');
   for (const p of problems) console.log(p);
   console.log(problems.length ? `\n${problems.length} problem(s). Fix them and check again; do not publish.`
-    : `No problems a script can see. Now open every picture above and look at it: one sheet per tab, every state of the tab on it.\n  Look for an extra or missing element, something off screen, a wrong icon, a mock that does not look like the product.\n  A detail too small on the sheet: check with --full for separate full-size pictures. After changing one tab: --tab <id>.\n  A state the pictures do not show (after a gesture, a timer, several presses): add it to shots.json beside the product file.\n\nPublish: ${join(dir, 'page.html')}\n  Claude: Artifact tool, capabilities {"db":{}}; keep the same file path to keep the address.\n  Elsewhere: node demo.mjs serve ${args[0]}   or send out/standalone.html\nThen: node demo.mjs mark ${args[0]}`);
+    : `No problems a script can see. Now open every picture above and look at it: one sheet per tab, every state of the tab on it.\n  Look for an extra or missing element, something off screen, a wrong icon, a mock that does not look like the product.\n  A detail too small on the sheet: check with --full for separate full-size pictures. After changing one tab: --tab <id>.\n  A state the pictures do not show (after a gesture, a timer, several presses): add it to shots.json beside the product file.\n\nPublish: ${join(dir, 'page.html')}\n  Claude: Artifact tool, capabilities {"db":{}}; keep the same file path to keep the address.\n  Elsewhere: ${me()} serve ${q(product)}   or send out/standalone.html\nAfter the owner has seen it: ${me()} mark ${q(product)}`);
   process.exitCode = problems.length ? 1 : 0;
 }
 
@@ -328,7 +345,7 @@ function init() {
   if (existsSync(to)) { console.error('Already there: ' + to); process.exit(2); }
   mkdirSync(dir, { recursive: true });
   copyFileSync(join(skill, 'assets', `example.${lang}.html`), to);
-  console.log(`${to}\n\nIt is a working example for a made-up app, in ${lang === 'ru' ? 'Russian' : 'English'} (--lang ru|en picks the other).\nWrite your page in the language the owner talks to you in and set DEMO.lang to it. Replace all of it with your product:\n  the mock (drawn from the product's real page or screenshots), its colours and type, the tabs.\nThe frame around it is added by the script; do not copy or restyle it.\nThen: node demo.mjs check ${to}`);
+  console.log(`${to}\n\nIt is a working example for a made-up app, in ${lang === 'ru' ? 'Russian' : 'English'} (--lang ru|en picks the other).\nWrite your page in the language the owner talks to you in and set DEMO.lang to it. Replace all of it with your product:\n  the mock (drawn from the product's real page or screenshots), its colours and type, the tabs.\nThe frame around it is added by the script; do not copy or restyle it.\nThen: ${me()} check ${q(to)}`);
 }
 
 // ---------- local server: the page plus a verdicts.json any agent can read from disk ----------
@@ -336,81 +353,103 @@ function init() {
 // "done", when the page has been closed for a while, or after a time limit; one server per page;
 // "stop" ends them by hand. Every running one is listed in a file in the temp folder.
 const REG = join(tmpdir(), 'try-and-vote-servers.json');
-const alive = pid => { try { process.kill(pid, 0); return true; } catch { return false; } };
-const servers = () => { try { return JSON.parse(readFileSync(REG, 'utf8')).filter(s => alive(s.pid)); } catch { return []; } };
-function stop() {
-  const page = args[0] ? resolve(args[0]) : null, list = servers(), mine = list.filter(s => !page || s.page === page);
-  for (const s of mine) { try { process.kill(s.pid); } catch { } console.log(`Stopped: http://127.0.0.1:${s.port}/  ${s.page}`); }
-  writeFileSync(REG, JSON.stringify(list.filter(s => !mine.includes(s))));
+const registry = () => { try { const l = JSON.parse(readFileSync(REG, 'utf8')); return Array.isArray(l) ? l.filter(s => s && s.port && s.token) : []; } catch { return []; } };
+// An entry is a live server of this skill only if its port answers with the entry's own token.
+// A process id proves nothing: by now it can belong to any program.
+const answers = async s => { try { const r = await fetch(`http://127.0.0.1:${s.port}/__who`, { signal: AbortSignal.timeout(1500) }); return r.ok && (await r.text()) === s.token; } catch { return false; } };
+const servers = async () => { const out = []; for (const s of registry()) if (await answers(s)) out.push(s); return out; };
+async function stop() {
+  const page = args[0] ? resolve(args[0]) : null, list = await servers(), mine = list.filter(s => !page || s.page === page);
+  for (const s of mine) {
+    // the server is asked to end itself; nothing is ever killed by process id
+    const ok = await fetch(`http://127.0.0.1:${s.port}/__stop`, { method: 'POST', headers: { 'x-token': s.token }, signal: AbortSignal.timeout(3000) }).then(r => r.ok, () => false);
+    console.log(`${ok ? 'Stopped' : 'Did not answer'}: http://127.0.0.1:${s.port}/  ${s.page}`);
+  }
+  try { writeFileSync(REG, JSON.stringify(list.filter(s => !mine.includes(s)))); } catch { }
   if (!mine.length) console.log('No server of this skill is running.');
 }
-function serve() {
-  const product = need(args[0]), dir = dirname(product), file = join(dir, 'verdicts.json'), first = Number(flags.port || 4717);
+async function serve() {
+  const product = need(args[0]), dir = dirname(product), file = join(dir, 'verdicts.json');
+  const first = number('port', 4717, 1, 65535), idleMin = number('idle', 20, 0.01, 1440), maxHours = number('max', 8, 0.01, 72), started = Date.now();
+  const lanOn = 'lan' in flags, token = sha(String(Math.random()) + started + process.pid);
   let port = first;
-  const read = () => { try { return JSON.parse(readFileSync(file, 'utf8')); } catch { return {}; } };
-  const same = servers().find(s => s.page === product);
-  if (same) { console.log(`This page is already being served: http://127.0.0.1:${same.port}/ (process ${same.pid}). To end it: node demo.mjs stop "${args[0]}"`); return; }
-  const idleMin = Number(flags.idle || 20), maxHours = Number(flags.max || 8), started = Date.now();
+  // A verdicts.json that cannot be read is put aside, never silently overwritten
+  const read = () => {
+    if (!existsSync(file)) return {};
+    try { const j = JSON.parse(readFileSync(file, 'utf8')); if (!j || typeof j !== 'object' || Array.isArray(j)) throw new Error('not an object'); return j; }
+    catch (e) { const aside = join(dir, `verdicts.broken-${Date.now()}.json`); try { renameSync(file, aside); } catch { } console.log(`verdicts.json could not be read (${e.message}); it was put aside as ${aside} and a new one started.`); return {}; }
+  };
+  const same = (await servers()).find(s => s.page === product);
+  if (same) { console.log(`This page is already being served: http://127.0.0.1:${same.port}/  To end it: ${me()} stop ${q(product)}`); return; }
   let last = started, opened = false, ending = false, tabsKnown = null;
   const bye = why => {
     if (ending) return; ending = true;
     console.log(`\n${why}\n`);
-    if (!existsSync(file)) writeFileSync(file, '{}');
     // The open page has told which tabs it has: no browser is started to find out
-    try { verdicts(file, tabsKnown || []); } catch { }
+    try { if (!existsSync(file)) writeFileSync(file, '{}'); verdicts(file, tabsKnown || []); } catch (e) { console.log('The answers could not be printed: ' + e.message + '\nThey are in ' + file); }
     setTimeout(() => process.exit(0), 200);
   };
-  process.on('exit', () => { try { writeFileSync(REG, JSON.stringify(servers().filter(s => s.pid !== process.pid))); } catch { } });
+  process.on('exit', () => { try { writeFileSync(REG, JSON.stringify(registry().filter(s => s.token !== token))); } catch { } });
   for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => process.exit(0));
   setInterval(() => {
     if (Date.now() - last > idleMin * 60e3) bye(opened ? `Stopped by itself: the page has been closed for ${idleMin} minutes and "done" was not pressed. The answers so far:` : `Stopped by itself: nobody opened the page in ${idleMin} minutes.`);
     else if (Date.now() - started > maxHours * 3600e3) bye(`Stopped by itself after ${maxHours} hours. The answers so far:`);
   }, Math.min(30e3, idleMin * 30e3));
-  const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.webp': 'image/webp', '.woff2': 'font/woff2' };
-  const server = createServer((req, res) => {
-    const send = (code, body, type = 'application/json') => { res.writeHead(code, { 'content-type': type + '; charset=utf-8', 'cache-control': 'no-store' }); res.end(body); };
-    const path = decodeURIComponent(new URL(req.url, 'http://x').pathname);
-    last = Date.now();
-    if (path === '/') opened = true;
-    if (path === '/__alive') {   // the open page says it is still there and, the first time, which tabs it has
-      if (req.method === 'POST') { let b = ''; req.on('data', c => { b += c; }); req.on('end', () => { try { tabsKnown = JSON.parse(b); } catch { } }); }
-      res.writeHead(204); return res.end();
-    }
-    if (path === '/') return send(200, wrap(product, '<script>window.__demoServe=1</script>'), 'text/html');
-    if (path === '/__verdicts' && req.method === 'GET') return send(200, JSON.stringify(read()));
-    // The owner pressed "done": print the answers and stop, which wakes an agent that started this in the background
-    if (path === '/__done' && req.method === 'POST') {
-      send(200, '{"ok":true}');
-      if ('stay' in flags) { console.log('\nThe owner pressed "done".\n'); verdicts(file, tabsKnown || []); } else bye('The owner pressed "done".');
-      return;
-    }
-    const m = path.match(/^\/__verdicts\/([\w.~:@+-]{1,200})$/);
-    if (m && req.method === 'PUT') {
-      const parts = [];
-      let size = 0;
-      req.on('data', c => { parts.push(c); if ((size += c.length) > 1e6) req.destroy(); });
-      req.on('end', () => {
-        try {
-          const all = read(); all[m[1]] = JSON.parse(Buffer.concat(parts).toString('utf8'));
-          writeFileSync(file, JSON.stringify(all, null, 1));
-          send(200, '{"ok":true}');
-        } catch (e) { send(400, JSON.stringify({ error: String(e.message) })); }
-      });
-      return;
-    }
-    const target = resolve(join(dir, path));
-    if (req.method !== 'GET' || !target.startsWith(dir + sep) || !existsSync(target) || !statSync(target).isFile()) return send(404, '{"error":"not found"}');
-    res.writeHead(200, { 'content-type': types[extname(target).toLowerCase()] || 'application/octet-stream' });
-    res.end(readFileSync(target));
+  // Only what a page needs is served: these kinds of files, from the page's own folder, no dot-files, nothing through a link out of it
+  const types = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.woff2': 'font/woff2', '.woff': 'font/woff', '.mp4': 'video/mp4', '.webm': 'video/webm' };
+  const lanHosts = () => Object.values(networkInterfaces()).flat().filter(a => a && a.family === 'IPv4' && !a.internal).map(a => a.address);
+  const local = req => ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress);
+  // The body of a request, up to a limit; more than that ends the request
+  const body = (req, max) => new Promise((ok, no) => { const parts = []; let size = 0; req.on('data', c => { if ((size += c.length) > max) { no(new Error('too large')); req.destroy(); } else parts.push(c); }); req.on('end', () => ok(Buffer.concat(parts).toString('utf8'))); req.on('error', no); });
+  const server = createServer(async (req, res) => {
+    const send = (code, text, type = 'application/json') => { if (res.headersSent) return; res.writeHead(code, { 'content-type': type + '; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' }); res.end(text); };
+    try {
+      // Requests are taken only under the names this server goes by, and writes only from its own page:
+      // a page of another site, or a name pointed at this machine, gets nothing
+      const host = String(req.headers.host || ''), names = [`127.0.0.1:${port}`, `localhost:${port}`, ...(lanOn ? lanHosts().map(h => `${h}:${port}`) : [])];
+      if (!names.includes(host)) return send(403, '{"error":"unknown host"}');
+      if (req.method !== 'GET' && req.headers.origin && req.headers.origin !== `http://${host}`) return send(403, '{"error":"foreign origin"}');
+      let path; try { path = decodeURIComponent(new URL(req.url, 'http://x').pathname); } catch { return send(400, '{"error":"bad address"}'); }
+      if (path === '/__who') return local(req) ? send(200, token, 'text/plain') : send(403, '{}');
+      if (path === '/__stop' && req.method === 'POST') { if (!local(req) || req.headers['x-token'] !== token) return send(403, '{}'); send(200, '{"ok":true}'); return setTimeout(() => process.exit(0), 100); }
+      last = Date.now();
+      if (path === '/__alive') {   // the open page says it is still there and, the first time, which tabs it has
+        if (req.method === 'POST') try { const l = JSON.parse(await body(req, 2e5)); if (Array.isArray(l)) tabsKnown = l.filter(t => t && typeof t.id === 'string').slice(0, 200).map(t => ({ id: t.id.slice(0, 200), title: String(t.title || '').slice(0, 300) })); } catch { }
+        res.writeHead(204); return res.end();
+      }
+      if (path === '/') { opened = true; return send(200, wrap(product, '<script>window.__demoServe=1</script>'), 'text/html'); }
+      if (path === '/__verdicts' && req.method === 'GET') return send(200, JSON.stringify(read()));
+      // The owner pressed "done": print the answers and stop, which wakes an agent that started this in the background
+      if (path === '/__done' && req.method === 'POST') {
+        send(200, '{"ok":true}');
+        if ('stay' in flags) { console.log('\nThe owner pressed "done".\n'); try { verdicts(file, tabsKnown || []); } catch (e) { console.log('The answers could not be printed: ' + e.message); } } else bye('The owner pressed "done".');
+        return;
+      }
+      const m = path.match(/^\/__verdicts\/([\w.~:@+-]{1,200})$/);
+      if (m && req.method === 'PUT') {
+        let v; try { v = JSON.parse(await body(req, 2e5)); if (!v || typeof v !== 'object') throw new Error('not an object'); } catch (e) { return send(400, JSON.stringify({ error: String(e.message) })); }
+        // only the fields of an answer are kept, each as text of a sane length
+        const all = read();
+        all[m[1]] = { verdict: ['yes', 'later', 'no'].includes(v.verdict) ? v.verdict : '', comment: String(v.comment || '').slice(0, 5000), title: String(v.title || '').slice(0, 300), at: String(v.at || '').slice(0, 40) };
+        writeFileSync(file, JSON.stringify(all, null, 1));
+        return send(200, '{"ok":true}');
+      }
+      if (req.method !== 'GET' || path.split('/').some(p => p.startsWith('.')) || !types[extname(path).toLowerCase()]) return send(404, '{"error":"not found"}');
+      const target = resolve(join(dir, path));
+      if (!target.startsWith(dir + sep) || !existsSync(target) || !statSync(target).isFile() || !realpathSync(target).startsWith(realpathSync(dir) + sep)) return send(404, '{"error":"not found"}');
+      res.writeHead(200, { 'content-type': types[extname(target).toLowerCase()], 'x-content-type-options': 'nosniff' });
+      res.end(readFileSync(target));
+    } catch (e) { send(500, JSON.stringify({ error: String(e.message) })); }
   });
   // A busy port is not an error: take the next one
-  server.on('error', e => { if (e.code === 'EADDRINUSE' && port < first + 30) server.listen(++port, 'lan' in flags ? '0.0.0.0' : '127.0.0.1'); else { console.error('Cannot listen: ' + e.message); process.exit(1); } });
+  const where = lanOn ? '0.0.0.0' : '127.0.0.1';
+  server.on('error', e => { if (e.code === 'EADDRINUSE' && port < Math.min(first + 30, 65535)) server.listen(++port, where); else { console.error('Cannot listen: ' + e.message); process.exit(1); } });
   server.on('listening', () => {
-    writeFileSync(REG, JSON.stringify([...servers(), { pid: process.pid, port, page: product, started }]));
-    const lan = 'lan' in flags ? Object.values(networkInterfaces()).flat().filter(a => a && a.family === 'IPv4' && !a.internal).map(a => `\n         http://${a.address}:${port}/   (other devices on this network; anyone there can open and answer)`).join('') : '';
-    console.log(`Page:    http://127.0.0.1:${port}/${lan}\nAnswers: ${file}\nStops by itself: when the owner presses "done", or ${idleMin} minutes after the page was closed (--idle <minutes>), or after ${maxHours} hours. By hand: node demo.mjs stop`);
+    try { writeFileSync(REG, JSON.stringify([...registry().filter(s => s.token !== token), { port, token, page: product, started }])); } catch { }
+    const lan = lanOn ? lanHosts().map(h => `\n         http://${h}:${port}/   (other devices on this network; anyone there can open the page and answer)`).join('') : '';
+    console.log(`Page:    http://127.0.0.1:${port}/${lan}\nAnswers: ${file}\nStops by itself: when the owner presses "done", or ${idleMin} minutes after the page was closed (--idle <minutes>), or after ${maxHours} hours. By hand: ${me()} stop`);
   });
-  server.listen(port, 'lan' in flags ? '0.0.0.0' : '127.0.0.1');
+  server.listen(port, where);
 }
 
 // ---------- the answers, sorted into piles ----------
@@ -426,6 +465,7 @@ function verdicts(src = args[0], known = null) {
 
   let ids = Object.keys(all);
   if (known) {
+    known = Array.isArray(known) ? known.filter(t => t && typeof t.id === 'string') : [];
     ids = known.map(t => t.id);
     for (const id of Object.keys(all)) if (!ids.includes(id)) ids.push(id);
   } else if (flags.page) {
@@ -434,8 +474,8 @@ function verdicts(src = args[0], known = null) {
   }
   const piles = { TAKE: [], LATER: [], REJECT: [], 'COMMENT, NO VERDICT': [], UNTOUCHED: [] };
   for (const id of ids) {
-    const v = all[id] || {}, comment = String(v.comment || '').trim();
-    piles[{ yes: 'TAKE', later: 'LATER', no: 'REJECT' }[v.verdict] || (comment ? 'COMMENT, NO VERDICT' : 'UNTOUCHED')].push({ id, title: v.title || '', comment, at: v.at || '' });
+    const v = all[id] && typeof all[id] === 'object' ? all[id] : {}, comment = String(v.comment || '').trim();
+    piles[{ yes: 'TAKE', later: 'LATER', no: 'REJECT' }[v.verdict] || (comment ? 'COMMENT, NO VERDICT' : 'UNTOUCHED')].push({ id, title: String(v.title || ''), comment, at: String(v.at || '') });
   }
   for (const [name, list] of Object.entries(piles)) {
     console.log(`${name} (${list.length})`);
@@ -459,7 +499,8 @@ function pressAndRead(work, product, asserts) {
       for(const t of["pointerdown","mousedown","pointerup","mouseup","click"])el.dispatchEvent(new(t[0]=="p"?PointerEvent:MouseEvent)(t,o))};
     const field=()=>{const a=document.activeElement;return a&&/^(INPUT|TEXTAREA)$/.test(a.tagName)&&body().contains(a)?a:body().querySelector("input:not([type=checkbox]):not([type=radio]),textarea,[contenteditable=true]")};
     for(const a of ASSERTS){let why="";try{demo.go(a.tab);if(a.variant!=null){const c=demo.tabs.find(t=>t.id===a.tab).controls[0];if(!c)throw new Error("the tab has no switch");demo.set(c.id,c.options[a.variant])}
-      await wait(80);let was=seen(),log=[];
+      await wait(80);let was=seen(),log=[];const start=seen(),SELP="button,[role=button],[data-touch],input[type=checkbox],input[type=radio]";
+      const marks=()=>[...body().querySelectorAll(SELP)].map(e=>e.className+"|"+e.getAttribute("aria-pressed")+"|"+e.getAttribute("aria-checked")+"|"+(e.checked?1:0)+"|"+(e.parentElement||e).className+"|"+((e.parentElement||e).parentElement||e).className+"|"+e.innerHTML),marks0=marks();
       for(const s of a.steps){
         if(s.click){const re=new RegExp(s.click,"i"),els=[...body().querySelectorAll("*")].filter(e=>re.test(e.textContent)&&e.getClientRects().length);
           if(!els.length)throw new Error("nothing on screen matches /"+s.click+"/");const el=els.sort((p,q)=>p.textContent.length-q.textContent.length)[0];
@@ -478,6 +519,9 @@ function pressAndRead(work, product, asserts) {
           if(s.key=="Enter"&&el.isConnected)el.dispatchEvent(new Event("change",{bubbles:true}))}
         else if(s.expect){if(!new RegExp(s.expect,"i").test(seen()))throw new Error("expected /"+s.expect+"/ on screen")}
         else if(s.expectNot){if(new RegExp(s.expectNot,"i").test(seen()))throw new Error("did not expect /"+s.expectNot+"/ on screen")}
+        else if(s.expectKept){const re=new RegExp(s.expectKept,"i"),a=(start.match(re)||[])[0],b=(seen().match(re)||[])[0];if(!a)throw new Error("nothing on screen matched /"+s.expectKept+"/ at the start");if(a!==b)throw new Error(a+" became "+(b||"nothing"))}
+        else if(s.expectMarksBack){const now=marks().slice(0,marks0.length);if(now.join("|")!==marks0.join("|"))throw new Error("the ticks and buttons are not as they were at the start")}
+        else if(s.expectMarksChanged){if(marks().slice(0,marks0.length).join("|")===marks0.join("|"))throw new Error("the press ticked nothing")}
         else if(s.expectInput){if(!field())throw new Error("expected a field to type into")}
         else if(s.expectChange){if(seen()===was)throw new Error("the press changed nothing on screen")}
         await wait(120)}
@@ -509,6 +553,7 @@ function evalCmd() {
     const from = cases.filter(k => c === k || c.startsWith(k + '-')).sort((p, q) => q.length - p.length)[0];
     const file = from && join(skill, 'evals', from, 'asserts.json');
     const acts = file && existsSync(file) ? withWork(work => { probe(work, page, '1280x860'); return pressAndRead(work, page, JSON.parse(readFileSync(file, 'utf8'))); }) : [];
+    if (!acts.length) bad.push('no behaviour checks exist for this case name: it cannot pass on rules alone');
     const ok = !bad.length && out.includes('No problems a script can see') && acts.every(a => a.ok);
     if (ok) passed++;
     console.log(`${ok ? 'PASS' : 'FAIL'}  ${c}   rules: ${bad.length ? bad.length + ' problem(s)' : 'clean'}, behaviour: ${acts.filter(a => a.ok).length} of ${acts.length}`);

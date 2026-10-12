@@ -1,13 +1,29 @@
 [
  {
-  "name": "with the undo bar: a tick shows \"Отменить\", pressing it takes the bar away",
+  "name": "with the undo bar: a tick shows \"Отменить\"; pressing it takes the bar away and the tick with it",
   "tab": "undo",
   "variant": 1,
   "steps": [
-   {"press": {"nth": 0}},
-   {"expect": "Отменить"},
-   {"click": "Отменить"},
-   {"expectNot": "Отменить"}
+   {
+    "press": {
+     "nth": 0
+    }
+   },
+   {
+    "expectMarksChanged": true
+   },
+   {
+    "expect": "Отменить"
+   },
+   {
+    "click": "Отменить"
+   },
+   {
+    "expectNot": "Отменить"
+   },
+   {
+    "expectMarksBack": true
+   }
   ]
  },
  {
@@ -15,17 +31,29 @@
   "tab": "undo",
   "variant": 0,
   "steps": [
-   {"press": {"nth": 0}},
-   {"expectNot": "Отменить"}
+   {
+    "press": {
+     "nth": 0
+    }
+   },
+   {
+    "expectNot": "Отменить"
+   }
   ]
  },
  {
-  "name": "skipping a habit changes the screen and a streak is still shown",
+  "name": "skipping a habit changes the screen and the streak number stays what it was",
   "tab": "skip",
   "steps": [
-   {"click": "Пропустить"},
-   {"expectChange": true},
-   {"expect": "сери|\\d+\\s*(дн|день|дня|дней)"}
+   {
+    "click": "Пропустить"
+   },
+   {
+    "expectChange": true
+   },
+   {
+    "expectKept": "\\d+\\s*(?:дн|день|дня|дней)|сери[яию]\\D{0,15}\\d+|\\d+\\D{0,6}сери"
+   }
   ]
  }
 ]
