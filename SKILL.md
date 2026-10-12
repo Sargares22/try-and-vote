@@ -59,18 +59,5 @@ What no script can check, so it is on you:
 - `caveat` says what the demo shows that is not verified on the real thing.
 - You looked at every picture `check` wrote, icons included.
 
-## Optional: spare the owner's limits
-
-Everything above is for one agent on any model. Skip this section unless both are true: you
-run on an expensive model or deep in a long conversation, and your harness can start a
-subagent or a thread on a cheaper model. Then let the cheaper one build:
-
-1. `node D brief <folder>` writes `brief.json`. Fill it in: the product, the language, the
-   surface, the real files to draw the mock from, and for each candidate what it is, what to
-   press and which variants to compare.
-2. Run `brief` again and give the printed text to the builder, with nothing added.
-3. Do not take the builder's word. Run `check` yourself: it holds the page to the brief. Then
-   open the pictures yourself. What you send back for rework is the PROBLEM lines and what
-   you saw, not a rewrite.
-
-You stay the one who shows the page to the owner and reads the answers.
+On an expensive model or deep in a long conversation, with a harness that can start a subagent on a
+cheaper model: `references/cheaper-builder.md` says how to let that one build while you check.
