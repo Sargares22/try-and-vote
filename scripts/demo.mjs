@@ -10,7 +10,7 @@
 //   node demo.mjs mark <folder>/demo.html
 //       Run right after publishing: remembers what the owner has been shown, so the next
 //       check can demand "updated" marks and a new revision for whatever changed since.
-//   node demo.mjs serve <folder>/demo.html [--port 4173] [--lan] [--stay]
+//   node demo.mjs serve <folder>/demo.html [--port 4717] [--lan] [--stay]
 //       Works in any harness. The page on http://127.0.0.1:<port> (--lan: also for a tablet or phone on
 //       the same network), answers written to verdicts.json beside it. When the owner presses "done"
 //       it prints the answers in piles and exits: start it as a background command and you are woken.
@@ -329,10 +329,11 @@ function init() {
 
 // ---------- local server: the page plus a verdicts.json any agent can read from disk ----------
 function serve() {
-  const product = need(args[0]), dir = dirname(product), file = join(dir, 'verdicts.json'), port = Number(flags.port || 4173);
+  const product = need(args[0]), dir = dirname(product), file = join(dir, 'verdicts.json'), first = Number(flags.port || 4717);
+  let port = first;
   const read = () => { try { return JSON.parse(readFileSync(file, 'utf8')); } catch { return {}; } };
   const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.webp': 'image/webp', '.woff2': 'font/woff2' };
-  createServer((req, res) => {
+  const server = createServer((req, res) => {
     const send = (code, body, type = 'application/json') => { res.writeHead(code, { 'content-type': type + '; charset=utf-8', 'cache-control': 'no-store' }); res.end(body); };
     const path = decodeURIComponent(new URL(req.url, 'http://x').pathname);
     if (path === '/') return send(200, wrap(product, '<script>window.__demoServe=1</script>'), 'text/html');
@@ -364,10 +365,14 @@ function serve() {
     if (req.method !== 'GET' || !target.startsWith(dir + sep) || !existsSync(target) || !statSync(target).isFile()) return send(404, '{"error":"not found"}');
     res.writeHead(200, { 'content-type': types[extname(target).toLowerCase()] || 'application/octet-stream' });
     res.end(readFileSync(target));
-  }).listen(port, 'lan' in flags ? '0.0.0.0' : '127.0.0.1', () => {
+  });
+  // A busy port is not an error: take the next one
+  server.on('error', e => { if (e.code === 'EADDRINUSE' && port < first + 30) server.listen(++port, 'lan' in flags ? '0.0.0.0' : '127.0.0.1'); else { console.error('Cannot listen: ' + e.message); process.exit(1); } });
+  server.on('listening', () => {
     const lan = 'lan' in flags ? Object.values(networkInterfaces()).flat().filter(a => a && a.family === 'IPv4' && !a.internal).map(a => `\n         http://${a.address}:${port}/   (other devices on this network; anyone there can open and answer)`).join('') : '';
     console.log(`Page:    http://127.0.0.1:${port}/${lan}\nAnswers: ${file}\nStops by itself when the owner presses "done" on the page (--stay keeps it running).`);
   });
+  server.listen(port, 'lan' in flags ? '0.0.0.0' : '127.0.0.1');
 }
 
 // ---------- the answers, sorted into piles ----------
