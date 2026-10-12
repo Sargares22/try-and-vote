@@ -1,0 +1,23 @@
+[
+ {
+  "name": "rename in place: select a file, Rename, type, Enter, the new name is in the list",
+  "tab": "rename",
+  "steps": [
+   {"click": "\\.(txt|pdf|docx?|png|jpe?g|xlsx?|md|csv|zip)\\b"},
+   {"click": "rename"},
+   {"expectInput": true},
+   {"type": "report-final"},
+   {"key": "Enter"},
+   {"expect": "report-final"}
+  ]
+ },
+ {
+  "name": "with the preview pane: selecting a file changes the screen",
+  "tab": "preview",
+  "variant": 1,
+  "steps": [
+   {"click": "\\.(txt|pdf|docx?|png|jpe?g|xlsx?|md|csv|zip)\\b"},
+   {"expectChange": true}
+  ]
+ }
+]

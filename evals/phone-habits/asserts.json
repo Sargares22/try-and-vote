@@ -1,0 +1,53 @@
+[
+ {
+  "name": "with the undo bar: a tick shows \"Отменить\", pressing it takes the bar away",
+  "tab": "undo",
+  "variant": 1,
+  "steps": [
+   {
+    "press": {
+     "nth": 0
+    }
+   },
+   {
+    "expect": "Отменить"
+   },
+   {
+    "click": "Отменить"
+   },
+   {
+    "expectNot": "Отменить"
+   }
+  ]
+ },
+ {
+  "name": "as now: a tick shows no undo bar",
+  "tab": "undo",
+  "variant": 0,
+  "steps": [
+   {
+    "press": {
+     "nth": 0
+    }
+   },
+   {
+    "expectNot": "Отменить"
+   }
+  ]
+ },
+ {
+  "name": "skipping a habit changes the screen and the streak is still shown",
+  "tab": "skip",
+  "steps": [
+   {
+    "click": "Пропустить"
+   },
+   {
+    "expectChange": true
+   },
+   {
+    "expect": "сери"
+   }
+  ]
+ }
+]

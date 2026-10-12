@@ -1,0 +1,37 @@
+[
+ {
+  "name": "half stars: the left half of the third star gives 2.5",
+  "tab": "half",
+  "variant": 1,
+  "steps": [
+   {
+    "press": {
+     "nth": 2,
+     "x": 0.2
+    }
+   },
+   {
+    "expect": "2[.,]5"
+   }
+  ]
+ },
+ {
+  "name": "whole stars: the same press gives 3, not 2.5",
+  "tab": "half",
+  "variant": 0,
+  "steps": [
+   {
+    "press": {
+     "nth": 2,
+     "x": 0.2
+    }
+   },
+   {
+    "expectNot": "2[.,]5"
+   },
+   {
+    "expect": "3"
+   }
+  ]
+ }
+]

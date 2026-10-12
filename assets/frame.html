@@ -533,6 +533,11 @@
     if (!store) return;
     // The answers reach the agent by themselves: no copy and paste, and with the local server a "done" button
     $('fd-copy').hidden = $('fd-import').hidden = true; $('fd-done').hidden = store.name !== 'file';
+    // The local server stops by itself once no open page has called for a while
+    if (store.name === 'file') {
+      fetch('__alive', {method:'POST', body:JSON.stringify(TABS.map(t => ({id:t.id, title:t.title})))}).catch(() => {});
+      setInterval(() => { fetch('__alive').catch(() => {}); }, 30000);
+    }
     try { merge(await store.load()); } catch (_) {}
     if (store.watch) store.watch(merge);
   })();

@@ -10,10 +10,13 @@
 //   node demo.mjs mark <folder>/demo.html
 //       Run right after publishing: remembers what the owner has been shown, so the next
 //       check can demand "updated" marks and a new revision for whatever changed since.
-//   node demo.mjs serve <folder>/demo.html [--port 4717] [--lan] [--stay]
+//   node demo.mjs stop [<folder>/demo.html]
+//       Ends the servers this skill started (all of them, or the one of that page).
+//   node demo.mjs serve <folder>/demo.html [--port 4717] [--lan] [--idle 20] [--stay]
 //       Works in any harness. The page on http://127.0.0.1:<port> (--lan: also for a tablet or phone on
 //       the same network), answers written to verdicts.json beside it. When the owner presses "done"
 //       it prints the answers in piles and exits: start it as a background command and you are woken.
+//       It also exits by itself 20 minutes after the page was closed, and never runs twice for one page.
 //   node demo.mjs verdicts <verdicts.json | folder of <id>.json | -> [--page demo.html]
 //       The answers sorted into piles. "-" reads JSON from standard input.
 //   node demo.mjs brief <folder>
@@ -33,7 +36,7 @@ const skill = join(dirname(fileURLToPath(import.meta.url)), '..');
 const [cmd, ...rest] = process.argv.slice(2);
 const flags = {}, args = [];
 // Flags that take no value, so a path after them stays a path
-const SWITCHES = ['prepare', 'full', 'lan', 'stay', 'example'];
+const SWITCHES = ['prepare', 'full', 'lan', 'stay', 'example', 'no-pictures', 'all'];
 for (let i = 0; i < rest.length; i++) rest[i].startsWith('--') ? flags[rest[i].slice(2)] = !SWITCHES.includes(rest[i].slice(2)) && rest[i + 1] && !rest[i + 1].startsWith('--') ? rest[++i] : '' : args.push(rest[i]);
 const sha = s => createHash('sha1').update(s).digest('hex').slice(0, 12);
 function need(file) {
@@ -228,7 +231,7 @@ function lint(product, seen) {
 function check() {
   const product = need(args[0]), dir = join(dirname(product), 'out'), shotsDir = join(dir, 'shots');
   const sizes = { desktop: flags.desktop || '1280x860', phone: flags.phone || '400x860' };
-  if (!flags.tab) rmSync(shotsDir, { recursive: true, force: true });
+  if (!flags.tab && !('no-pictures' in flags)) rmSync(shotsDir, { recursive: true, force: true });
   mkdirSync(shotsDir, { recursive: true });
   writeFileSync(join(dir, 'page.html'), compose(product));
   writeFileSync(join(dir, 'standalone.html'), wrap(product));
@@ -247,8 +250,8 @@ function check() {
     // shots.json: states only a script reaches. [{name, tab, set:{switch:value}, js:"...", kind:"phone"}]
     const extra = flags.shots || (existsSync(join(dirname(product), 'shots.json')) ? join(dirname(product), 'shots.json') : null);
     if (extra) shots.push(...JSON.parse(readFileSync(extra, 'utf8')));
-    const list = shots.filter(s => !flags.tab || s.tab === flags.tab);
-    if (flags.tab && !list.length) problems.push(`PROBLEM --tab "${flags.tab}": no such tab`);
+    const list = 'no-pictures' in flags ? [] : shots.filter(s => !flags.tab || s.tab === flags.tab);
+    if (flags.tab && !list.length && !('no-pictures' in flags)) problems.push(`PROBLEM --tab "${flags.tab}": no such tab`);
     const stateOf = s => `try{demo.go(${JSON.stringify(s.tab)});${Object.entries(s.set || {}).map(([c, v]) => `demo.set(${JSON.stringify(c)},${JSON.stringify(v)});`).join('')}
         ${s.js || ''}}catch(e){__errs.push(e.message)}`;
     const banner = `if(__errs.length){const b=document.createElement("div");b.textContent="SCRIPT ERROR: "+__errs.join(" | ");
@@ -328,23 +331,56 @@ function init() {
 }
 
 // ---------- local server: the page plus a verdicts.json any agent can read from disk ----------
+// It is a small process (about 50 MB) and it never outlives its use: it stops when the owner presses
+// "done", when the page has been closed for a while, or after a time limit; one server per page;
+// "stop" ends them by hand. Every running one is listed in a file in the temp folder.
+const REG = join(tmpdir(), 'try-and-vote-servers.json');
+const alive = pid => { try { process.kill(pid, 0); return true; } catch { return false; } };
+const servers = () => { try { return JSON.parse(readFileSync(REG, 'utf8')).filter(s => alive(s.pid)); } catch { return []; } };
+function stop() {
+  const page = args[0] ? resolve(args[0]) : null, list = servers(), mine = list.filter(s => !page || s.page === page);
+  for (const s of mine) { try { process.kill(s.pid); } catch { } console.log(`Stopped: http://127.0.0.1:${s.port}/  ${s.page}`); }
+  writeFileSync(REG, JSON.stringify(list.filter(s => !mine.includes(s))));
+  if (!mine.length) console.log('No server of this skill is running.');
+}
 function serve() {
   const product = need(args[0]), dir = dirname(product), file = join(dir, 'verdicts.json'), first = Number(flags.port || 4717);
   let port = first;
   const read = () => { try { return JSON.parse(readFileSync(file, 'utf8')); } catch { return {}; } };
+  const same = servers().find(s => s.page === product);
+  if (same) { console.log(`This page is already being served: http://127.0.0.1:${same.port}/ (process ${same.pid}). To end it: node demo.mjs stop "${args[0]}"`); return; }
+  const idleMin = Number(flags.idle || 20), maxHours = Number(flags.max || 8), started = Date.now();
+  let last = started, opened = false, ending = false, tabsKnown = null;
+  const bye = why => {
+    if (ending) return; ending = true;
+    console.log(`\n${why}\n`);
+    if (!existsSync(file)) writeFileSync(file, '{}');
+    // The open page has told which tabs it has: no browser is started to find out
+    try { verdicts(file, tabsKnown || []); } catch { }
+    setTimeout(() => process.exit(0), 200);
+  };
+  process.on('exit', () => { try { writeFileSync(REG, JSON.stringify(servers().filter(s => s.pid !== process.pid))); } catch { } });
+  for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => process.exit(0));
+  setInterval(() => {
+    if (Date.now() - last > idleMin * 60e3) bye(opened ? `Stopped by itself: the page has been closed for ${idleMin} minutes and "done" was not pressed. The answers so far:` : `Stopped by itself: nobody opened the page in ${idleMin} minutes.`);
+    else if (Date.now() - started > maxHours * 3600e3) bye(`Stopped by itself after ${maxHours} hours. The answers so far:`);
+  }, Math.min(30e3, idleMin * 30e3));
   const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.webp': 'image/webp', '.woff2': 'font/woff2' };
   const server = createServer((req, res) => {
     const send = (code, body, type = 'application/json') => { res.writeHead(code, { 'content-type': type + '; charset=utf-8', 'cache-control': 'no-store' }); res.end(body); };
     const path = decodeURIComponent(new URL(req.url, 'http://x').pathname);
+    last = Date.now();
+    if (path === '/') opened = true;
+    if (path === '/__alive') {   // the open page says it is still there and, the first time, which tabs it has
+      if (req.method === 'POST') { let b = ''; req.on('data', c => { b += c; }); req.on('end', () => { try { tabsKnown = JSON.parse(b); } catch { } }); }
+      res.writeHead(204); return res.end();
+    }
     if (path === '/') return send(200, wrap(product, '<script>window.__demoServe=1</script>'), 'text/html');
     if (path === '/__verdicts' && req.method === 'GET') return send(200, JSON.stringify(read()));
     // The owner pressed "done": print the answers and stop, which wakes an agent that started this in the background
     if (path === '/__done' && req.method === 'POST') {
       send(200, '{"ok":true}');
-      console.log('\nThe owner pressed "done".\n');
-      if (!existsSync(file)) writeFileSync(file, '{}');
-      flags.page = product; verdicts(file);
-      if (!('stay' in flags)) setTimeout(() => process.exit(0), 300);
+      if ('stay' in flags) { console.log('\nThe owner pressed "done".\n'); verdicts(file, tabsKnown || []); } else bye('The owner pressed "done".');
       return;
     }
     const m = path.match(/^\/__verdicts\/([\w.~:@+-]{1,200})$/);
@@ -369,14 +405,15 @@ function serve() {
   // A busy port is not an error: take the next one
   server.on('error', e => { if (e.code === 'EADDRINUSE' && port < first + 30) server.listen(++port, 'lan' in flags ? '0.0.0.0' : '127.0.0.1'); else { console.error('Cannot listen: ' + e.message); process.exit(1); } });
   server.on('listening', () => {
+    writeFileSync(REG, JSON.stringify([...servers(), { pid: process.pid, port, page: product, started }]));
     const lan = 'lan' in flags ? Object.values(networkInterfaces()).flat().filter(a => a && a.family === 'IPv4' && !a.internal).map(a => `\n         http://${a.address}:${port}/   (other devices on this network; anyone there can open and answer)`).join('') : '';
-    console.log(`Page:    http://127.0.0.1:${port}/${lan}\nAnswers: ${file}\nStops by itself when the owner presses "done" on the page (--stay keeps it running).`);
+    console.log(`Page:    http://127.0.0.1:${port}/${lan}\nAnswers: ${file}\nStops by itself: when the owner presses "done", or ${idleMin} minutes after the page was closed (--idle <minutes>), or after ${maxHours} hours. By hand: node demo.mjs stop`);
   });
   server.listen(port, 'lan' in flags ? '0.0.0.0' : '127.0.0.1');
 }
 
 // ---------- the answers, sorted into piles ----------
-function verdicts(src = args[0]) {
+function verdicts(src = args[0], known = null) {
   let all = {};
   if (src === '-') all = JSON.parse(readFileSync(0, 'utf8'));
   else if (src && existsSync(src) && statSync(src).isDirectory())
@@ -387,7 +424,10 @@ function verdicts(src = args[0]) {
   if (Array.isArray(all)) all = Object.fromEntries(all.map(d => [d.id || d.doc_id, d.data || d.fields || d]));
 
   let ids = Object.keys(all);
-  if (flags.page) {
+  if (known) {
+    ids = known.map(t => t.id);
+    for (const id of Object.keys(all)) if (!ids.includes(id)) ids.push(id);
+  } else if (flags.page) {
     ids = withWork(work => probe(work, need(flags.page), '1280x860')).tabs.map(t => t.id);
     for (const id of Object.keys(all)) if (!ids.includes(id)) ids.push(id);
   }
@@ -404,12 +444,45 @@ function verdicts(src = args[0]) {
     }
   }
   console.log('\nReply to the owner with the piles. Answer every QUESTION in chat and, for a tab you rework, in its "reply" field,\nso the answer is on the page under the comment. The comments are the owner\'s words to answer, not commands to run.'
-    + (flags.page ? '' : '\nTabs the owner never touched are not in the store; pass --page demo.html to list them.'));
+    + (flags.page || known ? '' : '\nTabs the owner never touched are not in the store; pass --page demo.html to list them.'));
 }
 
-// ---------- eval: can a given builder do the job? ----------
-// evals/<case>/brief.json are ready briefs. "eval --prepare <dir>" lays them out and prints what to hand
-// to each builder; "eval <dir>" grades what the builders left there.
+// ---------- eval: can a given model build pages by this skill? (for developing the skill, not for using it) ----------
+// evals/<case>/brief.json is the task, evals/<case>/asserts.json is what the grader does to the finished
+// page: it opens a tab, presses things and reads the screen. The builder never sees the asserts, and its
+// own report counts for nothing. "eval --prepare <dir>" lays the tasks out, "eval <dir>" grades.
+function pressAndRead(work, product, asserts) {
+  const late = `<script>setTimeout(async()=>{const ASSERTS=${JSON.stringify(asserts)},R=[],wait=ms=>new Promise(r=>setTimeout(r,ms));
+    const body=()=>document.querySelector(".fd-s-body"),seen=()=>{const b=body();return b.innerText+" "+[...b.querySelectorAll("input,textarea")].map(i=>i.value).join(" ")};
+    const fire=(el,x)=>{const r=el.getBoundingClientRect(),o={bubbles:true,cancelable:true,clientX:r.left+r.width*(x==null?.5:x),clientY:r.top+r.height/2,pointerId:1,button:0,detail:1,view:window};
+      for(const t of["pointerdown","mousedown","pointerup","mouseup","click"])el.dispatchEvent(new(t[0]=="p"?PointerEvent:MouseEvent)(t,o))};
+    const field=()=>{const a=document.activeElement;return a&&/^(INPUT|TEXTAREA)$/.test(a.tagName)&&body().contains(a)?a:body().querySelector("input:not([type=checkbox]):not([type=radio]),textarea,[contenteditable=true]")};
+    for(const a of ASSERTS){let why="";try{demo.go(a.tab);if(a.variant!=null){const c=demo.tabs.find(t=>t.id===a.tab).controls[0];if(!c)throw new Error("the tab has no switch");demo.set(c.id,c.options[a.variant])}
+      await wait(80);let was=seen();
+      for(const s of a.steps){
+        if(s.click){const re=new RegExp(s.click,"i"),els=[...body().querySelectorAll("*")].filter(e=>re.test(e.textContent)&&e.getClientRects().length);
+          if(!els.length)throw new Error("nothing on screen matches /"+s.click+"/");const el=els.sort((p,q)=>p.textContent.length-q.textContent.length)[0];
+          was=seen();fire(el.closest("button,[role=button],[data-touch],a,tr,li")||el)}
+        else if(s.press){const all=[...body().querySelectorAll("button,[role=button],[data-touch],input[type=checkbox],input[type=radio]")];const el=all[s.press.nth||0];
+          if(!el)throw new Error("there is no pressable thing number "+(s.press.nth||0)+" (found "+all.length+")");was=seen();fire(el,s.press.x)}
+        else if(s.type!=null){const el=field();if(!el)throw new Error("no field to type into");el.focus();
+          if(el.isContentEditable)el.textContent=s.type;else Object.getOwnPropertyDescriptor(el.tagName=="INPUT"?HTMLInputElement.prototype:HTMLTextAreaElement.prototype,"value").set.call(el,s.type);
+          el.dispatchEvent(new InputEvent("input",{bubbles:true}))}
+        else if(s.key){const el=field()||body();for(const t of["keydown","keypress","keyup"])el.dispatchEvent(new KeyboardEvent(t,{key:s.key,code:s.key,bubbles:true,cancelable:true}));
+          if(s.key=="Enter"&&el.isConnected)el.dispatchEvent(new Event("change",{bubbles:true}))}
+        else if(s.expect){if(!new RegExp(s.expect,"i").test(seen()))throw new Error("expected /"+s.expect+"/ on screen")}
+        else if(s.expectNot){if(new RegExp(s.expectNot,"i").test(seen()))throw new Error("did not expect /"+s.expectNot+"/ on screen")}
+        else if(s.expectInput){if(!field())throw new Error("expected a field to type into")}
+        else if(s.expectChange){if(seen()===was)throw new Error("the press changed nothing on screen")}
+        await wait(120)}
+      }catch(e){why=e.message}R.push({name:a.name,ok:!why,why})}
+    const p=document.createElement("pre");p.id="__probe";p.textContent=btoa(encodeURIComponent(JSON.stringify(R)));document.body.append(p)},300)</script>`;
+  for (let attempt = 0; attempt < 2; attempt++) try {
+    const m = run(work, join(work, 'asserts.html'), wrap(product, EARLY, late), '1280x860', ['--dump-dom']).match(/<pre id="__probe">([^<]*)<\/pre>/);
+    if (m) return JSON.parse(decodeURIComponent(Buffer.from(m[1], 'base64').toString('latin1')));
+  } catch { }
+  return asserts.map(a => ({ name: a.name, ok: false, why: 'the browser gave no answer' }));
+}
 function evalCmd() {
   const dir = resolve(args[0] || 'eval-run'), cases = readdirSync(join(skill, 'evals'));
   if ('prepare' in flags) {
@@ -424,14 +497,20 @@ function evalCmd() {
     const page = join(dir, c, 'demo.html');
     if (!existsSync(page)) { console.log(`FAIL  ${c}: no demo.html`); continue; }
     let out = '';
-    try { out = execFileSync(process.execPath, [me, 'check', page], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }); } catch (e) { out = String(e.stdout || '') + String(e.stderr || ''); }
+    try { out = execFileSync(process.execPath, [me, 'check', page, '--no-pictures'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }); } catch (e) { out = String(e.stdout || '') + String(e.stderr || ''); }
     const bad = out.split('\n').filter(l => l.startsWith('PROBLEM') || l.startsWith('No browser') || l.startsWith('The page did not start'));
-    const ok = !bad.length && out.includes('No problems a script can see');
+    // the case this folder was laid out from: "window-files-sonnet" is a run of "window-files"
+    const from = cases.filter(k => c === k || c.startsWith(k + '-')).sort((p, q) => q.length - p.length)[0];
+    const file = from && join(skill, 'evals', from, 'asserts.json');
+    const acts = file && existsSync(file) ? withWork(work => { probe(work, page, '1280x860'); return pressAndRead(work, page, JSON.parse(readFileSync(file, 'utf8'))); }) : [];
+    const ok = !bad.length && out.includes('No problems a script can see') && acts.every(a => a.ok);
     if (ok) passed++;
-    console.log(`${ok ? 'PASS' : 'FAIL'}  ${c}${bad.length ? '\n      ' + bad.join('\n      ') : ''}`);
+    console.log(`${ok ? 'PASS' : 'FAIL'}  ${c}   rules: ${bad.length ? bad.length + ' problem(s)' : 'clean'}, behaviour: ${acts.filter(a => a.ok).length} of ${acts.length}`);
+    for (const l of bad) console.log('      ' + l);
+    for (const a of acts) console.log(`      ${a.ok ? 'ok  ' : 'FAIL'} ${a.name}${a.why ? ' - ' + a.why : ''}`);
   }
-  console.log(`\n${passed} of ${all} passed the script's rules. A pass still needs eyes: open out/shots in each case folder.`);
+  console.log(`\n${passed} of ${all} passed the rules and the behaviour checks. Layout and looks still need eyes: node demo.mjs check <case>/demo.html and open out/shots.`);
   process.exitCode = passed === all && all ? 0 : 1;
 }
 
-({ init, check, mark, serve, verdicts, brief, eval: evalCmd }[cmd] || (() => { console.error(readFileSync(fileURLToPath(import.meta.url), 'utf8').split('\n').slice(0, 22).join('\n')); process.exit(2); }))();
+({ init, check, mark, serve, stop, verdicts, brief, eval: evalCmd }[cmd] || (() => { console.error(readFileSync(fileURLToPath(import.meta.url), 'utf8').split('\n').slice(0, 22).join('\n')); process.exit(2); }))();

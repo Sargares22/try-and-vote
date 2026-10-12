@@ -16,8 +16,7 @@ node D check <folder>/demo.html      build, check the rules, take pictures -> ou
 node D serve <folder>/demo.html      show it to the owner; exits with the answers when they press "done"
 node D mark <folder>/demo.html       after the owner has seen it: remember what was shown
 node D verdicts <answers> --page <folder>/demo.html     answers from elsewhere, in piles
-node D brief <folder>                hand the build to another agent: a brief to fill, then the text to give it
-node D eval --prepare <dir> / eval <dir>     can a given model build by this skill: ready briefs, then grades
+node D stop                          end the servers this skill started
 ```
 
 Write the page in the language the owner talks to you in and set `lang` to it (`ru` or `en`;
@@ -43,16 +42,13 @@ several presses, a timer that ran out) goes into `shots.json` beside `demo.html`
 
 - **Any harness:** start `serve` as a background command and give the owner the address
   (`--lan` for their tablet or phone). It ends when they press "done" and prints the piles.
+  It also ends by itself 20 minutes after the page was closed, and runs once per page; do not
+  leave servers behind: `stop` ends them.
 - **Claude with artifacts, as an extra:** publish `out/page.html` with
   `capabilities: {"db": {}}`, read with `ArtifactData` (`list`, collection `verdicts`,
   `out_dir`), pass that folder to `verdicts`. The artifact store needs a paid Claude plan;
   do not make it the only way.
 - **No server possible:** send `out/standalone.html`; the owner presses "copy answers".
-
-Build the page in a fresh thread or a subagent, not in a long conversation: every step re-reads
-the whole context, and the same page costs many times more there. The lead fills `brief.json`
-(`brief`), the builder gets the printed text and nothing else, and `check` holds the page to
-the brief. Before trusting a cheaper model as the builder, run `eval` with it once.
 
 What no script can check, so it is on you:
 
