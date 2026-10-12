@@ -474,7 +474,7 @@
     await Promise.all(Object.values(chains));
     await Promise.all([...unsent].map(id => push(id, docOf(id))));
     if (unsent.size) { vState.textContent = T.notSent; $('fd-copy').hidden = false; return; }
-    fetch('__done', {method:'POST'}).then(r => { vState.textContent = r.ok ? T.sent : T.notSent; if (!r.ok) $('fd-copy').hidden = false; }, () => { vState.textContent = T.notSent; $('fd-copy').hidden = false; });
+    fetch('__done', {method:'POST'}).then(r => { vState.textContent = r.ok ? T.sent : T.notSent; if (r.ok) $('fd-done').hidden = true; else $('fd-copy').hidden = false; }, () => { vState.textContent = T.notSent; $('fd-copy').hidden = false; });
   });
   function flushText(id){
     clearTimeout(typeTimer); typeTimer = null;
