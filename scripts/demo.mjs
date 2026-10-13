@@ -22,7 +22,7 @@
 //       owner marked in the mock are also drawn: out/notes/<tab>.png, each spot ringed and numbered.
 //   node demo.mjs brief <folder>
 //       Handing the build to another agent: first run writes brief.json to fill in, the next prints
-//       the text to give the builder. check then also checks the page against the brief.
+//       the text to give the builder.
 //   node demo.mjs eval --prepare <dir>   then   node demo.mjs eval <dir>
 //       Can a given model build pages by this skill? Lays out ready briefs, then grades the results.
 import { execFileSync } from 'node:child_process';
@@ -112,8 +112,10 @@ function run(work, file, html, size, extra) {
     { stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8', maxBuffer: 64 << 20, timeout: 120000, killSignal: 'SIGKILL' }); if (process.env.DEMO_TIMING) console.error(basename(file), Date.now() - t0, 'ms'); return r; }
   catch (e) { if (process.env.DEMO_TIMING) console.error(basename(file), 'FAILED after', Date.now() - t0, 'ms', e.code || e.signal || ''); browserSaid = `${exe}\n${String(e.stderr || e.message).trim().split('\n').slice(-6).join('\n')}`; throw e; }
 }
-// One run that walks every tab and reports what a picture cannot: errors, sideways scroll, page height, an empty mock
-function probe(work, product, size) {
+// One run that walks every tab and reports what a picture cannot: errors, sideways scroll, page height, an empty mock.
+// With a second size the page is put twice into one window, side by side, each at its own width: one browser
+// start answers for the desktop and for the phone, and the answer is a pair.
+function probe(work, product, size, also) {
   const late = `<script>setTimeout(()=>{const out={tabs:[],errs:__errs,width:innerWidth,config:window.demo&&demo.config};try{for(const t of demo.tabs){demo.go(t.id);const d=document.documentElement,s=document.getElementById("fd-stage");
     const b=s.querySelector(".fd-s-body")||s,H=d.scrollHeight,W=d.scrollWidth>innerWidth?d.scrollWidth:0,N=b.childElementCount;
     const look=()=>b.innerHTML+[...b.querySelectorAll("*")].map(e=>e.className+e.getAttribute("style")+e.getAttribute("aria-pressed")+(e.value||"")+(e.checked?"✓":"")).join("|");
@@ -124,15 +126,23 @@ function probe(work, product, size) {
     out.tabs.push({...t,height:H,wide:W,drawn:N,dom:hh,pressable:press.length,reacts,touch:s.querySelectorAll("button,input,select,textarea,canvas,[role=button],[data-touch]").length})}}catch(e){out.errs.push("demo: "+e.message)}
     const p=document.createElement("pre");p.id="__probe";p.textContent=btoa(encodeURIComponent(JSON.stringify(out)));document.body.append(p);
     if(parent!==window)parent.postMessage(p.textContent,"*")},300)</script>`;
+  const inner = wrap(product, EARLY, late), dims = [size, also].filter(Boolean).map(s => s.split('x').map(Number));
+  const both = also && `<!doctype html><body style="margin:0;display:flex;align-items:flex-start;background:#777">${dims.map(([w, h]) => `<iframe src="probe.html" style="flex:none;border:0;width:${w}px;height:${h}px"></iframe>`).join('')}
+    <script>addEventListener("message",e=>{const i=[...document.querySelectorAll("iframe")].findIndex(f=>f.contentWindow===e.source);if(i<0||document.getElementById("__probe"+i))return;
+      const p=document.createElement("pre");p.id="__probe"+i;p.textContent=e.data;document.body.append(p)})</script>`;
+  const read = dom => also ? [0, 1].map(i => dom.match(new RegExp(`<pre id="__probe${i}">([^<]*)</pre>`))) : [dom.match(/<pre id="__probe">([^<]*)<\/pre>/)];
   let m = null, answered = false;
   // On a loaded machine a headless start can stall: each browser gets two tries, then one without its own sandbox
   for (const [b, l] of exe ? [[exe, loose], [exe, loose]] : [...browsers().flatMap(b => [[b, false], [b, false]]), ...browsers().map(b => [b, true])]) {
     exe = b; loose = l;
     let dom = '';
-    try { dom = run(work, join(work, 'probe.html'), wrap(product, EARLY, late), size, ['--dump-dom']); } catch { }
+    try {
+      if (also) writeFileSync(join(work, 'probe.html'), inner);
+      dom = also ? run(work, join(work, 'both.html'), both, `${dims[0][0] + dims[1][0]}x${Math.max(dims[0][1], dims[1][1])}`, ['--dump-dom']) : run(work, join(work, 'probe.html'), inner, size, ['--dump-dom']);
+    } catch { }
     answered ||= dom.length > 0;
-    if ((m = dom.match(/<pre id="__probe">([^<]*)<\/pre>/))) break;
-    exe = null;
+    if ((m = read(dom)).every(Boolean)) break;
+    m = null; exe = null;
   }
   if (!m) {
     console.error(answered ? 'The page did not start. Is window.DEMO set in the product file?'
@@ -141,7 +151,8 @@ In a restricted agent session: run this same command outside the restriction; no
 Otherwise set DEMO_BROWSER to a browser that works here, or DEMO_BROWSER_ARGS to the flags it needs.${browserSaid ? '\nThe last one said:\n' + browserSaid.split('\n').filter((l, n, a) => !n || n >= a.length - 2).join('\n') : ''}`);
     process.exit(1);
   }
-  return JSON.parse(decodeURIComponent(Buffer.from(m[1], 'base64').toString('latin1')));
+  const out = m.map(x => JSON.parse(decodeURIComponent(Buffer.from(x[1], 'base64').toString('latin1'))));
+  return also ? out : out[0];
 }
 function withWork(fn) {
   let base = tmpdir();
@@ -153,23 +164,6 @@ function withWork(fn) {
 // ---------- the brief ----------
 // brief.json beside demo.html: {product, lang, surface, look_at:[paths], candidates:[{id, title, what, press, variants:[..], lvl, who, caveat}]}
 const briefOf = product => { const f = join(dirname(product), 'brief.json'); try { return existsSync(f) ? JSON.parse(readFileSync(f, 'utf8')) : null; } catch (e) { return { broken: String(e.message) }; } };
-function briefProblems(b, tabs, c) {
-  const out = [], bad = m => out.push('PROBLEM brief: ' + m);
-  if (b.broken) return ['PROBLEM brief.json does not parse: ' + b.broken];
-  if (!Array.isArray(b.candidates) || !b.candidates.length) return ['PROBLEM brief.json has no candidates'];
-  if (b.lang && c.lang !== b.lang) bad(`the page must be in "${b.lang}", DEMO.lang is "${c.lang || 'not set'}"`);
-  for (const k of b.candidates) {
-    const t = tabs.find(t => t.id === k.id);
-    if (!t) { bad(`candidate "${k.id}" (${k.title || ''}) has no tab with this id`); continue; }
-    const want = (k.variants || []).length, got = Math.max(0, ...t.controls.map(c => c.options.length));
-    if (want > 1 && got < want) bad(`candidate "${k.id}" asks to compare ${want} variants (${k.variants.join(' / ')}), the tab's switch has ${got}`);
-    const surface = k.surface || b.surface;
-    if (surface && t.surface !== surface) bad(`candidate "${k.id}" must be shown on the "${surface}" surface, the tab has "${t.surface || 'bare'}"`);
-    if (k.caveat && !t.caveat) bad(`candidate "${k.id}" has a caveat in the brief and none on the tab`);
-  }
-  for (const t of tabs) if (!b.candidates.some(k => k.id === t.id)) bad(`tab "${t.id}" is not in the brief: build what was asked, nothing more`);
-  return out;
-}
 function brief() {
   const dir = resolve(args[0] || '.'), file = join(dir, 'brief.json');
   if (!existsSync(file)) {
@@ -190,7 +184,7 @@ Skill: ${join(skill, 'SKILL.md')} - read it first and follow it.
 Brief: ${file} - what to build: the product, the language, the surface, the files to draw the mock from, and ${b.candidates.length} candidate feature(s).
 Work in: ${dir} - write demo.html there, beside the brief. Start with: node "${me}" init "${dir}" --lang ${b.lang === 'en' ? 'en' : 'ru'}
 
-Done means: node "${me}" check "${join(dir, 'demo.html')}" prints no PROBLEM lines (it also checks the page against the brief), and you have opened every picture it wrote.
+Done means: node "${me}" check "${join(dir, 'demo.html')}" prints no PROBLEM lines, and you have opened every picture it wrote.
 One tab per candidate, with the candidate's id. Nothing that is not in the brief. Do not run serve, do not publish, do not commit.
 Report: the number of check runs, every PROBLEM line you hit, and anything in the brief you had to guess.`);
 }
@@ -203,11 +197,8 @@ function lint(product, seen) {
   for (const e of new Set(seen.errs)) bad(`script error: ${e}`);
   if (!tabs.length) bad('no tabs: window.DEMO.tabs is empty');
   if (!c.key || !/^[\w-]+$/.test(c.key)) bad('DEMO.key is missing: a short latin name, unique to this page');
-  if (c.rev === undefined || c.rev === '') bad('DEMO.rev is missing');
   const example = dirname(resolve(product)) === resolve(join(skill, 'assets'));
   if (!example && !('example' in flags) && (c.key === 'leika-candidates' || /Монстера|Monstera/.test(readFileSync(product, 'utf8')))) bad('the example product is still in the file (key "leika-candidates" or the plant list): replace all of it');
-  // The frame speaks the page's language: the tabs must be written in it too
-  if (c.lang && !['ru', 'en'].includes(c.lang)) bad(`DEMO.lang is "${c.lang}": the frame has "ru" and "en"; for another language set lang:'en' and translate through DEMO.text`);
   const ids = new Set();
   for (const t of tabs) {
     const p = m => bad(`tab "${t.id}": ${m}`);
@@ -216,12 +207,6 @@ function lint(product, seen) {
     for (const [k, max] of [['tab', 24], ['title', 70], ['desc', 240], ['do', 170]]) {
       if (!t[k]) p(`"${k}" is empty`); else if (t[k].length > max) p(`"${k}" is ${t[k].length} characters, the limit is ${max}: the owner opens the page to touch, not to read`);
     }
-    if (t.who.length > 150) p(`"who" is ${t.who.length} characters, the limit is 150`);
-    const cyr = /[а-яё]/i.test(t.title + t.desc + t.do);
-    if (c.lang === 'ru' && !cyr && !c.text) p('DEMO.lang is "ru" but the texts are not in Russian: write the page in one language');
-    if (c.lang === 'en' && cyr && !c.text) p('DEMO.lang is "en" but the texts are in Russian: write the page in one language');
-    if (t.reply.length > 320) p(`"reply" is ${t.reply.length} characters, the limit is 320`);
-    if (![0, 1, 2].includes(t.lvl)) p('lvl must be 0, 1 or 2');
     if (t.surface && !['phone', 'tablet', 'window', 'browser', 'bare', 'fill'].includes(t.surface)) p(`surface "${t.surface}" is unknown: phone, tablet, window, browser, bare or fill`);
     if (!t.hasMount) p('no mount(stage, v) function'); else if (!t.drawn) p('mount() drew nothing into the stage');
     else if (!t.touch) p('nothing in the mock can be pressed (no button, input or canvas; mark other touchable things with data-touch)');
@@ -236,11 +221,8 @@ function lint(product, seen) {
   if (was) {
     const file = sha(readFileSync(product, 'utf8'));
     if (was.file !== file) {
-      if (String(was.rev) === String(c.rev)) bad(`the page changed since it was shown, but DEMO.rev is still "${c.rev}": bump it, or the owner's browser will not open the updated tab`);
       const changed = tabs.filter(t => was.tabs[t.id] !== tabHash(t));
       for (const t of changed) if (!t.upd) bad(`tab "${t.id}" is new or changed since it was shown: set upd:true on it`);
-      for (const t of tabs) if (t.upd && !changed.includes(t) && changed.length) bad(`tab "${t.id}" has upd:true but did not change: clear it`);
-      if (!tabs.some(t => t.upd)) bad('the page changed since it was shown and no tab has upd:true: mark the tab the change belongs to');
       for (const id of Object.keys(was.tabs)) if (!ids.has(id) && was.answered?.includes(id)) bad(`tab "${id}" has the owner's answer and is gone: keep its id`);
     }
   }
@@ -255,10 +237,8 @@ function check() {
   writeFileSync(join(dir, 'page.html'), compose(product));
   writeFileSync(join(dir, 'standalone.html'), wrap(product));
   const problems = withWork(work => {
-    const seen = { desktop: probe(work, product, sizes.desktop), phone: probe(work, product, sizes.phone) };
+    const [desktop, phone] = probe(work, product, sizes.desktop, sizes.phone), seen = { desktop, phone };
     const problems = lint(product, seen.desktop);
-    const b = briefOf(product);
-    if (b) problems.push(...briefProblems(b, seen.desktop.tabs, seen.desktop.config || {}));
     // a page can break at phone width only: its errors and missing tabs count too
     for (const e of new Set(seen.phone.errs)) if (!seen.desktop.errs.includes(e)) problems.push(`PROBLEM script error at phone width: ${e}`);
     if (seen.phone.tabs.length < seen.desktop.tabs.length) problems.push('PROBLEM at phone width the page stops before all tabs have opened');

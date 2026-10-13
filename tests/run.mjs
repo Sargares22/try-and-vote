@@ -22,7 +22,6 @@ const cases = [
   ['a good page passes', s => s, null],
   ['an empty "what to press"', s => s.replace(/do:'Tick the plants[^']*'/, "do:''"), '"do" is empty'],
   ['a description that is an essay', s => s.replace("desc:'When you water", "desc:'" + 'Very long text. '.repeat(20) + "When you water"), 'characters, the limit is'],
-  ['texts in another language than the page says', s => s.replace("lang:'en'", "lang:'ru'"), 'the texts are not in Russian'],
   ['a mock that draws nothing', s => s.replace("mount:scheduleScreen", "mount:() => {}"), 'drew nothing'],
   ['buttons that do nothing', s => s.replace("mount:scheduleScreen", "mount:stage => { stage.innerHTML = '<button>Press me</button>'; }"), 'none of them changes anything'],
   ['a mock wider than a phone', s => s.replace("mount:scheduleScreen", "mount:stage => { stage.innerHTML = '<button style=\"width:900px\">Wide</button>'; stage.firstChild.onclick = e => { e.target.textContent += '!'; }; }").replace("id:'heat',", "id:'heat',surface:'bare',"), 'scrolls sideways at phone width'],

@@ -72,7 +72,6 @@ It works in any agent harness that can run commands. A harness that cannot (Anti
 - Text limits on titles and descriptions, so the owner tries features instead of reading essays.
 - Something to press in every tab, and a visible answer to the press.
 - No sideways scroll at phone width (400 px).
-- One language across the page.
 - Tabs changed since the owner last looked are marked as updated.
 - One sheet of pictures per tab, every state side by side, for the agent to look at before showing the page.
 
