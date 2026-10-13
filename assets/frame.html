@@ -107,10 +107,10 @@
      A numbered mark stays where the owner pressed; the catching layer is there only while a spot is picked. */
   .fd-diff{position:absolute;inset:0;z-index:4;pointer-events:none;overflow:hidden}
   .fd-s-bare .fd-diff{overflow:visible}
-  /* A ring in the thing's own shape, a little outside it, nothing poured over it: it comes in once and fades */
-  .fd-diff i{position:absolute;box-shadow:0 0 0 2px var(--fd-accent),0 0 0 6px color-mix(in oklch,var(--fd-accent) 22%,transparent)}
-  @media (prefers-reduced-motion:no-preference){.fd-diff i{animation:fd-diff 2s cubic-bezier(.2,.7,.2,1) both}}
-  @keyframes fd-diff{0%{opacity:0;scale:1.08}14%{opacity:1;scale:1}70%{opacity:1}100%{opacity:0}}
+  /* A ring and a light wash in the thing's own shape: it blinks twice and fades */
+  .fd-diff i{position:absolute;box-shadow:0 0 0 2px var(--fd-accent);background:color-mix(in oklch,var(--fd-accent) 18%,transparent)}
+  @media (prefers-reduced-motion:no-preference){.fd-diff i{animation:fd-diff 2s ease-out both}}
+  @keyframes fd-diff{0%{opacity:0}10%{opacity:1}40%{opacity:.3}65%{opacity:1}100%{opacity:0}}
   /* The layers lie over a light mock, so the frame's colours are taken in their light variant there */
   :where(.fd-surface:not(.fd-s-bare)) :is(.fd-diff,.fd-pins,.fd-catch){color-scheme:light}
   .fd-pins,.fd-catch{position:absolute;inset:0;z-index:5}
@@ -458,9 +458,10 @@
   function showChange(was){
     const box = stage.querySelector('.fd-surface'), body = stage.querySelector('.fd-s-body'); if (!box || !body) return;
     const all = thingsOf(body), changed = new Set();
-    for (const e of all) { const k = keyOf(e), n = was.get(k) || 0; if (n) was.set(k, n - 1); else if (e.getBoundingClientRect().width) changed.add(e); }
+    for (const e of all) { const k = keyOf(e), n = was.get(k) || 0; if (n) was.set(k, n - 1); else { const r = e.getBoundingClientRect(); if (r.width > 1 && r.height > 1) changed.add(e); } }   // what collapsed to nothing is gone, not changed
     // nothing differs on this screen: say so, or the owner hunts for a change that is not there yet
-    if (!changed.size) { say(T.same, 3200); return; }
+    // (something only went away: there is nothing to ring, and the owner saw it go)
+    if (!changed.size) { if (![...was.values()].some(n => n > 0)) say(T.same, 3200); return; }
     // a block whose every thing changed gets one ring, not a ring per thing
     const whole = e => thingsOf(e).every(x => changed.has(x)), tops = new Set();
     // (a wrapper around a single thing is not a block: the ring stays on the thing and keeps its shape)
