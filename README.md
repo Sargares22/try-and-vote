@@ -19,10 +19,7 @@ Try and vote is a skill for coding agents. Agents usually propose features as a 
   <img src="docs/page.png" width="820" alt="A try-and-vote page: the brief and the verdict on the left, the product mock on the right">
 </p>
 
-<p align="center">
-  <a href="https://github.com/Sargares22/try-and-vote/releases/download/v1.0.0/try-and-vote-film.mp4"><img src="docs/film.jpg" width="820" alt="Watch the one-minute film"></a><br>
-  <a href="https://github.com/Sargares22/try-and-vote/releases/download/v1.0.0/try-and-vote-film.mp4">Watch the one-minute film</a>
-</p>
+https://github.com/user-attachments/assets/4be38fc1-d675-4c79-9dc9-5c0d044b51e2
 
 ## Install
 

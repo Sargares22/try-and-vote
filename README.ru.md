@@ -19,10 +19,7 @@ Try and vote («попробуй и реши») это навык для код�
   <img src="docs/page.png" width="820" alt="Страница try-and-vote: слева заметка и вердикт, справа макет продукта">
 </p>
 
-<p align="center">
-  <a href="https://github.com/Sargares22/try-and-vote/releases/download/v1.0.0/try-and-vote-film.mp4"><img src="docs/film.jpg" width="820" alt="Фильм на одну минуту"></a><br>
-  <a href="https://github.com/Sargares22/try-and-vote/releases/download/v1.0.0/try-and-vote-film.mp4">Фильм на одну минуту (на английском)</a>
-</p>
+https://github.com/user-attachments/assets/4be38fc1-d675-4c79-9dc9-5c0d044b51e2
 
 ## Установка
 
