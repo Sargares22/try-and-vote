@@ -109,6 +109,9 @@
   .fd-s-bare .fd-diff{overflow:visible}
   /* A ring and a light wash in the thing's own shape: it blinks twice and fades */
   .fd-diff i{position:absolute;box-shadow:0 0 0 2px var(--fd-accent);background:color-mix(in oklch,var(--fd-accent) 18%,transparent)}
+  /* Several changes get one quiet dashed frame around them all, "look here"; the rings inside it step back */
+  .fd-diff.group i{box-shadow:0 0 0 1.5px var(--fd-accent);background:color-mix(in oklch,var(--fd-accent) 10%,transparent)}
+  .fd-diff i.g{box-shadow:none;background:none;border-radius:14px;outline:1.5px dashed color-mix(in oklch,var(--fd-accent) 65%,transparent)}
   @media (prefers-reduced-motion:no-preference){.fd-diff i{animation:fd-diff 2s ease-out both}}
   @keyframes fd-diff{0%{opacity:0}10%{opacity:1}40%{opacity:.3}65%{opacity:1}100%{opacity:0}}
   /* The layers lie over a light mock, so the frame's colours are taken in their light variant there */
@@ -455,6 +458,24 @@
     if (body) for (const e of thingsOf(body)) { const k = keyOf(e); was.set(k, (was.get(k) || 0) + 1); }
     return was;
   }
+  function unionOf(els){
+    const u = {left:Infinity, top:Infinity, right:-Infinity, bottom:-Infinity};
+    for (const e of els) { const r = e.getBoundingClientRect(); u.left = Math.min(u.left, r.left); u.top = Math.min(u.top, r.top); u.right = Math.max(u.right, r.right); u.bottom = Math.max(u.bottom, r.bottom); }
+    return u;
+  }
+  // A change below the fold is no change the owner saw: the mock is scrolled to it first, at once, since
+  // the rings are placed from where things are measured right after. Only the mock scrolls, never the page;
+  // a mock that does not scroll (the bare surface) is left as it is.
+  function bringIn(els, body){
+    const M = 8, by = (a, z, size) => a >= 0 && z <= size ? 0 : a < 0 || z - a + 2 * M > size ? a - M : z + M - size;   // what does not fit is shown from its start
+    for (let p = els[0].parentElement; p && body.contains(p); p = p.parentElement) {
+      if (!els.every(e => p.contains(e))) continue;
+      const s = getComputedStyle(p), sx = /auto|scroll/.test(s.overflowX), sy = /auto|scroll/.test(s.overflowY); if (!sx && !sy) continue;
+      const u = unionOf(els), v = p.getBoundingClientRect(), l = v.left + p.clientLeft, t = v.top + p.clientTop;
+      const dx = sx ? by(u.left - l, u.right - l, p.clientWidth) : 0, dy = sy ? by(u.top - t, u.bottom - t, p.clientHeight) : 0;
+      if (dx || dy) p.scrollTo({left:p.scrollLeft + dx, top:p.scrollTop + dy, behavior:'instant'});
+    }
+  }
   function showChange(was){
     const box = stage.querySelector('.fd-surface'), body = stage.querySelector('.fd-s-body'); if (!box || !body) return;
     const all = thingsOf(body), changed = new Set();
@@ -467,9 +488,29 @@
     // (a wrapper around a single thing is not a block: the ring stays on the thing and keeps its shape)
     for (let e of changed) { while (e.parentElement !== body && e.parentElement.children.length > 1 && whole(e.parentElement)) e = e.parentElement; tops.add(e); }
     for (const e of [...tops]) if ([...tops].some(t => t !== e && t.contains(e))) tops.delete(e);
-    const b = box.getBoundingClientRect(), layer = document.createElement('div');
+    const every = all.every(x => changed.has(x));
+    if (!every) bringIn([...tops], body);
+    const b = box.getBoundingClientRect(), layer = document.createElement('div'), near = [];
     layer.className = 'fd-diff';
-    for (const e of all.every(x => changed.has(x)) ? [body] : tops) {
+    // changes that sit together get one soft frame, "look here"; a change far from the rest stays on its own,
+    // and a frame that would take in most of what is seen is not drawn (a frame around everything says nothing)
+    if (!every) for (const e of [...tops].sort((p, q) => p.getBoundingClientRect().top - q.getBoundingClientRect().top)) {
+      const g = near[near.length - 1], r = e.getBoundingClientRect();
+      if (g && r.top - g.bottom < 64) { g.els.push(e); g.bottom = Math.max(g.bottom, r.bottom); } else near.push({els:[e], bottom:r.bottom});
+    }
+    for (const {els} of near) if (els.length > 1) {
+      const u = unionOf(els);
+      const v = body.getBoundingClientRect(), vl = v.left + body.clientLeft, vt = v.top + body.clientTop, W = box.clientWidth, H = box.clientHeight, GG = 10, E = 2;
+      const seen = Math.max(0, Math.min(u.right, vl + body.clientWidth) - Math.max(u.left, vl)) * Math.max(0, Math.min(u.bottom, vt + body.clientHeight) - Math.max(u.top, vt));
+      // GG px outside the things, and never past the edge of the surface, where it would be cut off
+      const x0 = Math.max(E, u.left - b.left - box.clientLeft - GG), y0 = Math.max(E, u.top - b.top - box.clientTop - GG), x1 = Math.min(W - E, u.right - b.left - box.clientLeft + GG), y1 = Math.min(H - E, u.bottom - b.top - box.clientTop + GG);
+      if (seen <= .7 * body.clientWidth * body.clientHeight && x1 > x0 && y1 > y0) {
+        const g = document.createElement('i'); g.className = 'g'; layer.classList.add('group');
+        Object.assign(g.style, {left:x0 + 'px', top:y0 + 'px', width:x1 - x0 + 'px', height:y1 - y0 + 'px'});
+        layer.append(g);
+      }
+    }
+    for (const e of every ? [body] : tops) {
       const r = e.getBoundingClientRect(), i = document.createElement('i');
       const own = getComputedStyle(e).borderTopLeftRadius, G = e === body ? -4 : 3;   // the ring keeps the thing's corners, G px outside it
       Object.assign(i.style, {left:r.left - b.left - box.clientLeft - G + 'px', top:r.top - b.top - box.clientTop - G + 'px', width:r.width + 2 * G + 'px', height:r.height + 2 * G + 'px',
