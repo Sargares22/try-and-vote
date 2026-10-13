@@ -35,7 +35,7 @@ Needs Node.js 18 or newer and Chrome, Chromium or Edge. Inside WSL the Windows b
 
 - **A tab for each candidate feature**, marked once it is decided.
 - **A brief.** What the feature is, how much it complicates the product, and what to press.
-- **A switch** between variants, or between "as now" and the new behaviour.
+- **A switch** between variants, or between "as now" and the new behaviour. What the switch changed in the mock is ringed for a moment, so the difference is never a guess.
 - **A working mock** on a phone, a tablet, a desktop window, a browser, a single component or the full stage.
 - **Three verdict buttons:** take, later, skip.
 - **A comment box.** Dictation works.

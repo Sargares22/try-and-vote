@@ -100,9 +100,15 @@
   .fd-pin[aria-pressed=true]{background:var(--fd-accent);color:var(--fd-on);box-shadow:none}
   .fd-hint{position:absolute;z-index:6;inset-block-start:.75rem;inset-inline:4rem;margin:0;min-block-size:2.75rem;display:grid;place-items:center;text-align:center;padding:.25rem .75rem;border-radius:var(--fd-r);
     background:var(--fd-accent);color:var(--fd-on);font-size:.875rem;font-weight:600;pointer-events:none}
+  .fd-hint.low{inset-block:auto .75rem;inset-inline:.75rem}
 
   /* Notes on the mock: layers over the surface, in the frame's colours whatever the product's.
      A numbered mark stays where the owner pressed; the catching layer is there only while a spot is picked. */
+  .fd-diff{position:absolute;inset:0;z-index:4;pointer-events:none;overflow:hidden}
+  .fd-s-bare .fd-diff{overflow:visible}
+  .fd-diff i{position:absolute;border-radius:6px;outline:2px solid var(--fd-accent);outline-offset:1px;background:color-mix(in oklch,var(--fd-accent) 18%,transparent)}
+  @media (prefers-reduced-motion:no-preference){.fd-diff i{animation:fd-diff 2s ease-out both}}
+  @keyframes fd-diff{0%{opacity:0}10%{opacity:1}40%{opacity:.3}65%{opacity:1}100%{opacity:0}}
   .fd-pins,.fd-catch{position:absolute;inset:0;z-index:5}
   .fd-pins{pointer-events:none}
   .fd-catch{cursor:crosshair;overflow:hidden;touch-action:none}
@@ -328,7 +334,7 @@
     ru:{levels:['не усложняет','усложняет немного','усложняет заметно'],
       updated:'обновлено', doLabel:'Что нажать', caveat:'Не проверено: ', reset:'Начать сначала',
       yes:'Беру', later:'Позже', no:'Не беру', comment:'Комментарий. Можно надиктовать', next:'Дальше →',
-      mark:'Пометить место на макете', markHint:'Нажмите на место в макете', noteAsk:'Что здесь не так?', noteSave:'Сохранить', noteDel:'Удалить',
+      mark:'Пометить место на макете', markHint:'Нажмите на место в макете', noteAsk:'Что здесь не так?', noteSave:'Сохранить', noteDel:'Удалить', same:'Здесь пока разницы нет. Нажмите что-нибудь в макете',
       reply:'Ответ агента', done:'Готово, отправить агенту', sent:'Отправлено агенту. Страницу можно закрыть', notSent:'Не отправилось: агент не слушает. Нажмите «Скопировать ответы»',
       sum:(done, all) => `<b>${done}</b> из ${all} решено`,
       saving:'Сохраняю…', failed:'Не сохранилось. Ответ остался в этом браузере',
@@ -338,7 +344,7 @@
     en:{levels:['adds no complexity','adds a little complexity','adds real complexity'],
       updated:'updated', doLabel:'What to press', caveat:'Not verified: ', reset:'Start over',
       yes:'Take', later:'Later', no:'Skip', comment:'Comment. Dictation works', next:'Next →',
-      mark:'Mark a spot in the mock', markHint:'Press a spot in the mock', noteAsk:'What about this spot?', noteSave:'Save', noteDel:'Delete',
+      mark:'Mark a spot in the mock', markHint:'Press a spot in the mock', noteAsk:'What about this spot?', noteSave:'Save', noteDel:'Delete', same:'No difference here yet. Press something in the mock',
       reply:'The agent\'s answer', done:'Done, send to the agent', sent:'Sent to the agent. You can close the page', notSent:'Not sent: the agent is not listening. Press "Copy answers"',
       sum:(done, all) => `<b>${done}</b> of ${all} decided`,
       saving:'Saving…', failed:'Not saved. The answer is kept in this browser',
@@ -414,8 +420,55 @@
   }
   tools.addEventListener('click', e => {
     const b = e.target.closest('button[data-c]'); if (!b) return;
-    vals[b.dataset.c] = b.dataset.v; drawTools(); mount();
+    const was = lookOf(); vals[b.dataset.c] = b.dataset.v; drawTools(); mount(); showChange(was);
   });
+  // ---------- what a switch changed ----------
+  // The owner flips a switch and must see at once what it did. The mock before and after is compared
+  // thing by thing (texts, icons, fields: what it says, its size, its colours), and whatever is new or
+  // different gets a ring that fades out by itself. Things that only moved are left alone.
+  const SOLID = 'svg,img,canvas,video,input,select,textarea';
+  function thingsOf(el){
+    const out = [];
+    (function walk(e){ for (const c of e.children) {
+      if (c.matches(SOLID) || !c.children.length) out.push(c);
+      else { if ([...c.childNodes].some(n => n.nodeType === 3 && n.textContent.trim())) out.push(c); walk(c); }
+    } })(el);
+    return out;
+  }
+  function keyOf(e){
+    const s = getComputedStyle(e), r = e.getBoundingClientRect();
+    const says = e.matches('svg') ? e.innerHTML : e.matches(SOLID) ? (e.value || e.currentSrc || e.src || '') + (e.checked ? '✓' : '') : [...e.childNodes].filter(n => n.nodeType === 3).map(n => n.textContent.trim()).join(' ');
+    // a text that only got narrower or wider is the same text; a picture or a field of another size is not
+    return [e.tagName, says, ...(e.matches(SOLID) ? [Math.round(r.width), Math.round(r.height)] : []), s.color, s.backgroundColor, s.borderTopColor, s.fontWeight, s.textDecorationLine, s.opacity].join('|');
+  }
+  let hintTimer = null;
+  function say(text, ms){
+    const h = $('fd-hint'); clearTimeout(hintTimer); h.textContent = text; h.hidden = false; h.classList.toggle('low', !!ms);   // a passing remark sits low, clear of the switches
+    hintTimer = ms ? setTimeout(() => { h.hidden = true; }, ms) : null;
+  }
+  function lookOf(){
+    const body = stage.querySelector('.fd-s-body'), was = new Map();
+    if (body) for (const e of thingsOf(body)) { const k = keyOf(e); was.set(k, (was.get(k) || 0) + 1); }
+    return was;
+  }
+  function showChange(was){
+    const box = stage.querySelector('.fd-surface'), body = stage.querySelector('.fd-s-body'); if (!box || !body) return;
+    const all = thingsOf(body), changed = new Set();
+    for (const e of all) { const k = keyOf(e), n = was.get(k) || 0; if (n) was.set(k, n - 1); else if (e.getBoundingClientRect().width) changed.add(e); }
+    // nothing differs on this screen: say so, or the owner hunts for a change that is not there yet
+    if (!changed.size) { say(T.same, 3200); return; }
+    // a block whose every thing changed gets one ring, not a ring per thing
+    const whole = e => thingsOf(e).every(x => changed.has(x)), tops = new Set();
+    for (let e of changed) { while (e.parentElement !== body && whole(e.parentElement)) e = e.parentElement; tops.add(e); }
+    const b = box.getBoundingClientRect(), layer = document.createElement('div');
+    layer.className = 'fd-diff';
+    for (const e of all.every(x => changed.has(x)) ? [body] : tops) {
+      const r = e.getBoundingClientRect(), i = document.createElement('i');
+      Object.assign(i.style, {left:r.left - b.left - box.clientLeft + 'px', top:r.top - b.top - box.clientTop + 'px', width:r.width + 'px', height:r.height + 'px'});
+      layer.append(i);
+    }
+    box.append(layer); setTimeout(() => layer.remove(), 2200);
+  }
   $('fd-reset').addEventListener('click', mount);
   function go(i){
     if (typeTimer) flushText(tab().id);
@@ -578,14 +631,15 @@
   }
   function stopMarking(){
     if (marking) marking.remove();
-    marking = null; pinBtn.setAttribute('aria-pressed', false); $('fd-hint').hidden = true;
+    if (marking) $('fd-hint').hidden = true;
+    marking = null; pinBtn.setAttribute('aria-pressed', false);
   }
   function startMarking(){
     endNote('save');
     const box = surface(), body = mockBody(); if (!box || !body) return;
     const layer = marking = document.createElement('div'), hl = document.createElement('div');
     layer.className = 'fd-catch'; hl.className = 'fd-hl'; hl.hidden = true; layer.append(hl); box.append(layer);
-    pinBtn.setAttribute('aria-pressed', true); $('fd-hint').hidden = false;
+    pinBtn.setAttribute('aria-pressed', true); say(T.markHint);
     // the catching layer lies on top, so the thing under the pointer is looked up through it
     // and a press on an icon or a label inside a button means the button
     const under = (x, y) => { const e = document.elementsFromPoint(x, y).find(e => e !== body && body.contains(e)), b = e && e.closest('button,a,[role=button],[data-touch],label,select'); return b && b !== body && body.contains(b) ? b : e || body; };
