@@ -112,8 +112,8 @@
   /* Several changes get one quiet dashed frame around them all, "look here"; the rings inside it step back */
   .fd-diff.group i{box-shadow:0 0 0 1.5px var(--fd-accent);background:color-mix(in oklch,var(--fd-accent) 10%,transparent)}
   .fd-diff i.g{box-shadow:none;background:none;border-radius:14px;outline:1.5px dashed color-mix(in oklch,var(--fd-accent) 65%,transparent)}
-  @media (prefers-reduced-motion:no-preference){.fd-diff i{animation:fd-diff 2s ease-out both}}
-  @keyframes fd-diff{0%{opacity:0}10%{opacity:1}40%{opacity:.3}65%{opacity:1}100%{opacity:0}}
+  @media (prefers-reduced-motion:no-preference){.fd-diff i{animation:fd-diff 1.2s ease-out both}}
+  @keyframes fd-diff{0%{opacity:0}12%{opacity:1}40%{opacity:.35}62%{opacity:1}100%{opacity:0}}
   /* The layers lie over a light mock, so the frame's colours are taken in their light variant there */
   :where(.fd-surface:not(.fd-s-bare)) :is(.fd-diff,.fd-pins,.fd-catch){color-scheme:light}
   .fd-pins,.fd-catch{position:absolute;inset:0;z-index:5}
@@ -517,7 +517,7 @@
         borderRadius:e === body ? '0' : own.endsWith('%') ? '999px' : (parseFloat(own) || 3) + G + 'px'});
       layer.append(i);
     }
-    box.append(layer); setTimeout(() => layer.remove(), 2200);
+    box.append(layer); setTimeout(() => layer.remove(), 1400);
   }
   $('fd-reset').addEventListener('click', mount);
   function go(i){
