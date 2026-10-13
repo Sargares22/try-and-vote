@@ -100,15 +100,19 @@
   .fd-pin[aria-pressed=true]{background:var(--fd-accent);color:var(--fd-on);box-shadow:none}
   .fd-hint{position:absolute;z-index:6;inset-block-start:.75rem;inset-inline:4rem;margin:0;min-block-size:2.75rem;display:grid;place-items:center;text-align:center;padding:.25rem .75rem;border-radius:var(--fd-r);
     background:var(--fd-accent);color:var(--fd-on);font-size:.875rem;font-weight:600;pointer-events:none}
-  .fd-hint.low{inset-block:auto .75rem;inset-inline:.75rem}
+  .fd-hint.low{inset-block:3.625rem auto;inset-inline:0;margin-inline:auto;inline-size:fit-content;max-inline-size:calc(100% - 1.5rem);min-block-size:0;padding:.5rem .875rem;border-radius:999px;
+    background:var(--fd-ink);color:var(--fd-page);font-weight:500;box-shadow:0 .5rem 1.5rem color-mix(in oklch,black 35%,transparent)}
 
   /* Notes on the mock: layers over the surface, in the frame's colours whatever the product's.
      A numbered mark stays where the owner pressed; the catching layer is there only while a spot is picked. */
   .fd-diff{position:absolute;inset:0;z-index:4;pointer-events:none;overflow:hidden}
   .fd-s-bare .fd-diff{overflow:visible}
-  .fd-diff i{position:absolute;border-radius:6px;outline:2px solid var(--fd-accent);outline-offset:1px;background:color-mix(in oklch,var(--fd-accent) 18%,transparent)}
-  @media (prefers-reduced-motion:no-preference){.fd-diff i{animation:fd-diff 2s ease-out both}}
-  @keyframes fd-diff{0%{opacity:0}10%{opacity:1}40%{opacity:.3}65%{opacity:1}100%{opacity:0}}
+  /* A ring in the thing's own shape, a little outside it, nothing poured over it: it comes in once and fades */
+  .fd-diff i{position:absolute;box-shadow:0 0 0 2px var(--fd-accent),0 0 0 6px color-mix(in oklch,var(--fd-accent) 22%,transparent)}
+  @media (prefers-reduced-motion:no-preference){.fd-diff i{animation:fd-diff 2s cubic-bezier(.2,.7,.2,1) both}}
+  @keyframes fd-diff{0%{opacity:0;scale:1.08}14%{opacity:1;scale:1}70%{opacity:1}100%{opacity:0}}
+  /* The layers lie over a light mock, so the frame's colours are taken in their light variant there */
+  :where(.fd-surface:not(.fd-s-bare)) :is(.fd-diff,.fd-pins,.fd-catch){color-scheme:light}
   .fd-pins,.fd-catch{position:absolute;inset:0;z-index:5}
   .fd-pins{pointer-events:none}
   .fd-catch{cursor:crosshair;overflow:hidden;touch-action:none}
@@ -399,7 +403,7 @@
   // mount() may return a function; it is called before the next mount, to stop timers and the like
   let unmount = null;
   function mount(){
-    stopMarking(); endNote('save');
+    stopMarking(); endNote('save'); clearTimeout(hintTimer); $('fd-hint').hidden = true;
     if (typeof unmount === 'function') try { unmount(); } catch (_) {}
     // The surface is the frame's, its inside is the product's
     const kind = SURFACES.includes(tab().surface || DEMO.surface) ? tab().surface || DEMO.surface : 'bare';
@@ -443,7 +447,7 @@
   }
   let hintTimer = null;
   function say(text, ms){
-    const h = $('fd-hint'); clearTimeout(hintTimer); h.textContent = text; h.hidden = false; h.classList.toggle('low', !!ms);   // a passing remark sits low, clear of the switches
+    const h = $('fd-hint'); clearTimeout(hintTimer); h.textContent = text; h.hidden = false; h.classList.toggle('low', !!ms);   // a passing remark is a small pill just under the switches, clear of them
     hintTimer = ms ? setTimeout(() => { h.hidden = true; }, ms) : null;
   }
   function lookOf(){
@@ -459,12 +463,16 @@
     if (!changed.size) { say(T.same, 3200); return; }
     // a block whose every thing changed gets one ring, not a ring per thing
     const whole = e => thingsOf(e).every(x => changed.has(x)), tops = new Set();
-    for (let e of changed) { while (e.parentElement !== body && whole(e.parentElement)) e = e.parentElement; tops.add(e); }
+    // (a wrapper around a single thing is not a block: the ring stays on the thing and keeps its shape)
+    for (let e of changed) { while (e.parentElement !== body && e.parentElement.children.length > 1 && whole(e.parentElement)) e = e.parentElement; tops.add(e); }
+    for (const e of [...tops]) if ([...tops].some(t => t !== e && t.contains(e))) tops.delete(e);
     const b = box.getBoundingClientRect(), layer = document.createElement('div');
     layer.className = 'fd-diff';
     for (const e of all.every(x => changed.has(x)) ? [body] : tops) {
       const r = e.getBoundingClientRect(), i = document.createElement('i');
-      Object.assign(i.style, {left:r.left - b.left - box.clientLeft + 'px', top:r.top - b.top - box.clientTop + 'px', width:r.width + 'px', height:r.height + 'px'});
+      const own = getComputedStyle(e).borderTopLeftRadius, G = e === body ? -4 : 3;   // the ring keeps the thing's corners, G px outside it
+      Object.assign(i.style, {left:r.left - b.left - box.clientLeft - G + 'px', top:r.top - b.top - box.clientTop - G + 'px', width:r.width + 2 * G + 'px', height:r.height + 2 * G + 'px',
+        borderRadius:e === body ? '0' : own.endsWith('%') ? '999px' : (parseFloat(own) || 3) + G + 'px'});
       layer.append(i);
     }
     box.append(layer); setTimeout(() => layer.remove(), 2200);
