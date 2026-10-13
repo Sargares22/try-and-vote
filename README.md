@@ -83,7 +83,8 @@ Fifteen builds by three Claude models (Opus 5.5, Sonnet 5.5, Haiku 5.5), five ea
 - All 15 passed the script's rules and a grader that presses the built page itself.
 - Mean time was 3.7 to 4.5 minutes per page.
 - In a blind look at the pictures of one task, the larger models adapted the mock to phone width better than the smallest. The script did not see that difference; eyes did.
-- Not measured: other vendors' models, and real products with real source files. Notes on the mock were added after these runs.
+- Other vendors, one build each of the phone brief: Codex built and checked the page by itself in 12 minutes; Antigravity (Gemini 3.8 Flash) wrote the page in under 6 minutes but could not run the check, since its headless mode refuses shell commands, so the check was run for it. Both pages passed the rules and the pressing grader on the first try.
+- Not measured: real products with real source files. Notes on the mock were added after the Claude runs.
 
 ## Limits
 

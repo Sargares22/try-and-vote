@@ -586,7 +586,9 @@ function pressAndRead(work, product, asserts) {
       const marks=()=>[...body().querySelectorAll(SELP)].map(e=>e.className+"|"+e.getAttribute("aria-pressed")+"|"+e.getAttribute("aria-checked")+"|"+(e.checked?1:0)+"|"+(e.parentElement||e).className+"|"+((e.parentElement||e).parentElement||e).className+"|"+e.innerHTML),marks0=marks();
       for(const s of a.steps){
         if(s.click){const re=new RegExp(s.click,"i"),els=[...body().querySelectorAll("*")].filter(e=>re.test(e.textContent)&&e.getClientRects().length);
-          if(!els.length)throw new Error("nothing on screen matches /"+s.click+"/");const el=els.sort((p,q)=>p.textContent.length-q.textContent.length)[0];
+          if(!els.length)throw new Error("nothing on screen matches /"+s.click+"/");
+          // a thing made to be pressed wins over a wrapper that merely holds the same words
+          const made=els.filter(e=>e.matches("button,[role=button],[data-touch],a,label,input")),el=(made.length?made:els).sort((p,q)=>p.textContent.length-q.textContent.length||(p.contains(q)?1:q.contains(p)?-1:0))[0];
           was=seen();fire(el.closest("button,[role=button],[data-touch],a,tr,li")||el)}
         else if(s.press){const all=[...body().querySelectorAll("button,[role=button],[data-touch],input[type=checkbox],input[type=radio]")];const el=all[s.press.nth||0];
           if(!el)throw new Error("there is no pressable thing number "+(s.press.nth||0)+" (found "+all.length+")");was=seen();fire(el,s.press.x)}
