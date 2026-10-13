@@ -65,7 +65,7 @@ The agent gets each note with the element you pressed, its coordinates inside th
 
 The server also exits by itself 20 minutes after the page was closed, and runs once per page.
 
-It works in any agent harness. A Claude artifact can hold the page too, but it is an extra, not a requirement. With no server at all, the page opens from disk and the owner presses "copy answers".
+It works in any agent harness that can run commands. A harness that cannot (Antigravity without a window) can still write the page, but someone else has to run the check for it. A Claude artifact can hold the page too, as an extra. With no server at all, the page opens from disk and the owner presses "copy answers".
 
 ## What the script enforces
 
@@ -83,7 +83,7 @@ Fifteen builds by three Claude models (Opus 5.5, Sonnet 5.5, Haiku 5.5), five ea
 - All 15 passed the script's rules and a grader that presses the built page itself.
 - Mean time was 3.7 to 4.5 minutes per page.
 - In a blind look at the pictures of one task, the larger models adapted the mock to phone width better than the smallest. The script did not see that difference; eyes did.
-- Other vendors, one build each of the phone brief: Codex built and checked the page by itself in 12 minutes; Antigravity (Gemini 3.8 Flash) wrote the page in under 6 minutes but could not run the check, since its headless mode refuses shell commands, so the check was run for it. Both pages passed the rules and the pressing grader on the first try.
+- Other vendors, all three briefs each, one build per brief. Codex built and checked every page by itself, 6 to 12 minutes and 60 to 100 thousand tokens a page. Antigravity (Gemini 3.8 Flash) wrote every page in 5 to 9 minutes but could not run the check, since its headless mode refuses shell commands; the check was run for it. All six pages passed the rules and the pressing grader as first written.
 - Not measured: real products with real source files. Notes on the mock were added after the Claude runs.
 
 ## Limits

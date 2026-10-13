@@ -84,7 +84,9 @@ function browsers(soft) {
   if (!found.length) { console.error('No Chrome, Chromium or Edge found, and check needs one for its rules and pictures.\nInstall one or set DEMO_BROWSER to a browser executable.'); process.exit(2); }
   return found;
 }
-let exe = null, browserSaid = '';
+// `loose`: inside a restricted agent session (seen with Codex on Windows) the browser cannot start its own
+// sandbox and dies at once; started without it, it works. That start is tried only after the normal one failed.
+let exe = null, browserSaid = '', loose = false;
 // Extra browser flags for a machine that needs them, e.g. DEMO_BROWSER_ARGS="--no-sandbox" inside a sandboxed agent
 const moreArgs = (process.env.DEMO_BROWSER_ARGS || '').split(' ').filter(Boolean);
 const EARLY = '<script>window.__errs=[];addEventListener("error",e=>__errs.push(e.message||String(e)));addEventListener("unhandledrejection",e=>__errs.push(String(e.reason)))</script>'
@@ -105,7 +107,7 @@ function run(work, file, html, size, extra) {
   const win = wsl && exe.endsWith('.exe'), there = p => win ? winPath(p) : p;
   const url = win ? 'file:///' + encodeURI(winPath(file).replace(/\\/g, '/')) : pathToFileURL(file).href;
   const t0 = Date.now(); if (process.env.DEMO_TIMING) process.on("exit", () => 0);
-  try { const r = execFileSync(exe, ['--headless=new', '--disable-gpu', '--hide-scrollbars', '--no-first-run', ...moreArgs, `--window-size=${size.replace('x', ',')}`,
+  try { const r = execFileSync(exe, ['--headless=new', '--disable-gpu', '--hide-scrollbars', '--no-first-run', ...moreArgs, ...(loose ? ['--no-sandbox'] : []), `--window-size=${size.replace('x', ',')}`,
     `--user-data-dir=${there(join(work, 'profile'))}`, '--virtual-time-budget=4000', ...extra.map(a => a.startsWith('--screenshot=') ? '--screenshot=' + there(a.slice(13)) : a), url],
     { stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8', maxBuffer: 64 << 20, timeout: 120000, killSignal: 'SIGKILL' }); if (process.env.DEMO_TIMING) console.error(basename(file), Date.now() - t0, 'ms'); return r; }
   catch (e) { if (process.env.DEMO_TIMING) console.error(basename(file), 'FAILED after', Date.now() - t0, 'ms', e.code || e.signal || ''); browserSaid = `${exe}\n${String(e.stderr || e.message).trim().split('\n').slice(-6).join('\n')}`; throw e; }
@@ -123,9 +125,9 @@ function probe(work, product, size) {
     const p=document.createElement("pre");p.id="__probe";p.textContent=btoa(encodeURIComponent(JSON.stringify(out)));document.body.append(p);
     if(parent!==window)parent.postMessage(p.textContent,"*")},300)</script>`;
   let m = null, answered = false;
-  // On a loaded machine a headless start can stall: each browser gets two tries
-  for (const b of (exe ? [exe] : browsers()).flatMap(b => [b, b])) {
-    exe = b;
+  // On a loaded machine a headless start can stall: each browser gets two tries, then one without its own sandbox
+  for (const [b, l] of exe ? [[exe, loose], [exe, loose]] : [...browsers().flatMap(b => [[b, false], [b, false]]), ...browsers().map(b => [b, true])]) {
+    exe = b; loose = l;
     let dom = '';
     try { dom = run(work, join(work, 'probe.html'), wrap(product, EARLY, late), size, ['--dump-dom']); } catch { }
     answered ||= dom.length > 0;
@@ -134,7 +136,9 @@ function probe(work, product, size) {
   }
   if (!m) {
     console.error(answered ? 'The page did not start. Is window.DEMO set in the product file?'
-      : `No browser answered headless.${browserSaid ? '\nThe last one said:\n' + browserSaid : ''}\nSet DEMO_BROWSER to a browser that works here, or DEMO_BROWSER_ARGS to the flags it needs (a sandboxed agent session often needs --no-sandbox).`);
+      : `No browser could start headless here, with or without its own sandbox.
+In a restricted agent session: run this same command outside the restriction; nothing in the page needs changing.
+Otherwise set DEMO_BROWSER to a browser that works here, or DEMO_BROWSER_ARGS to the flags it needs.${browserSaid ? '\nThe last one said:\n' + browserSaid.split('\n').filter((l, n, a) => !n || n >= a.length - 2).join('\n') : ''}`);
     process.exit(1);
   }
   return JSON.parse(decodeURIComponent(Buffer.from(m[1], 'base64').toString('latin1')));
@@ -507,8 +511,8 @@ function notePictures(product, tabs) {
       }).join('');
       const sheet = `<!doctype html><meta charset=utf8><style>body{margin:0;padding:${GAP}px;background:#5a5a5a;display:flex;flex-direction:column;gap:${GAP}px;align-items:flex-start;font:600 15px system-ui,sans-serif;color:#fff}
         figure{margin:0}figcaption{height:${CAP}px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:${wide - 2 * GAP}px}iframe{display:block;border:0;background:#000}</style>${html}`;
-      for (const b of found.flatMap(b => [b, b])) {
-        exe = b;
+      for (const [b, l] of exe ? [[exe, loose], [exe, loose]] : [...found.flatMap(b => [[b, false], [b, false]]), ...found.map(b => [b, true])]) {
+        exe = b; loose = l;
         try { run(work, join(work, 'sheet.html'), sheet, `${wide}x${tall}`, [`--screenshot=${png}`]); } catch { }
         if (existsSync(png)) break;
       }
