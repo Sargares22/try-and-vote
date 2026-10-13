@@ -58,7 +58,7 @@ function need(file) {
 function compose(product) {
   const src = readFileSync(product, 'utf8');
   const title = src.match(/<title>([^<]*)<\/title>/i);
-  return `<title>${title ? title[1] : 'Feature candidates'}</title>\n`
+  return `<title>${title ? title[1] : 'Feature candidates'}</title>\n<script>window.__demoRev="${sha(src)}"</script>\n`
     + readFileSync(join(skill, 'assets', 'frame.html'), 'utf8').replace('<!--PRODUCT-->', () => src.replace(/<title>[^<]*<\/title>\s*/i, ''));
 }
 // The same skeleton the Artifact tool puts around a fragment, so a local look matches the published one
@@ -101,7 +101,7 @@ function run(work, file, html, size, extra) {
     file = join(work, 'outer.html');
     size = `520x${h}`;
     writeFileSync(file, `<!doctype html><body style="margin:0;background:#777"><iframe src="${basename(inner)}" style="display:block;border:0;width:${w}px;height:${h}px"></iframe>
-      <script>addEventListener("message",e=>{const p=document.createElement("pre");p.id="__probe";p.textContent=e.data;document.body.append(p)})</script>`);
+      <script>addEventListener("message",e=>{if(typeof e.data!=="string"||e.data.indexOf("__probe:"))return;const p=document.createElement("pre");p.id="__probe";p.textContent=e.data.slice(8);document.body.append(p)})</script>`);
   }
   // A Windows browser started from WSL takes Windows paths
   const win = wsl && exe.endsWith('.exe'), there = p => win ? winPath(p) : p;
@@ -125,15 +125,16 @@ function probe(work, product, size, also) {
     for(let i=0;i<press.length;i++){const p=b.querySelectorAll(SEL)[i];if(!p)break;const was=look();try{p.click()}catch(e){}if(look()!==was)reacts++}
     out.tabs.push({...t,height:H,wide:W,drawn:N,dom:hh,pressable:press.length,reacts,touch:s.querySelectorAll("button,input,select,textarea,canvas,[role=button],[data-touch]").length})}}catch(e){out.errs.push("demo: "+e.message)}
     const p=document.createElement("pre");p.id="__probe";p.textContent=btoa(encodeURIComponent(JSON.stringify(out)));document.body.append(p);
-    if(parent!==window)parent.postMessage(p.textContent,"*")},300)</script>`;
+    if(parent!==window)parent.postMessage("__probe:"+p.textContent,"*")},300)</script>`;
   const inner = wrap(product, EARLY, late), dims = [size, also].filter(Boolean).map(s => s.split('x').map(Number));
   const both = also && `<!doctype html><body style="margin:0;display:flex;align-items:flex-start;background:#777">${dims.map(([w, h]) => `<iframe src="probe.html" style="flex:none;border:0;width:${w}px;height:${h}px"></iframe>`).join('')}
-    <script>addEventListener("message",e=>{const i=[...document.querySelectorAll("iframe")].findIndex(f=>f.contentWindow===e.source);if(i<0||document.getElementById("__probe"+i))return;
-      const p=document.createElement("pre");p.id="__probe"+i;p.textContent=e.data;document.body.append(p)})</script>`;
+    <script>addEventListener("message",e=>{const i=[...document.querySelectorAll("iframe")].findIndex(f=>f.contentWindow===e.source);if(i<0||typeof e.data!=="string"||e.data.indexOf("__probe:")||document.getElementById("__probe"+i))return;
+      const p=document.createElement("pre");p.id="__probe"+i;p.textContent=e.data.slice(8);document.body.append(p)})</script>`;
   const read = dom => also ? [0, 1].map(i => dom.match(new RegExp(`<pre id="__probe${i}">([^<]*)</pre>`))) : [dom.match(/<pre id="__probe">([^<]*)<\/pre>/)];
   let m = null, answered = false;
   // On a loaded machine a headless start can stall: each browser gets two tries, then one without its own sandbox
   for (const [b, l] of exe ? [[exe, loose], [exe, loose]] : [...browsers().flatMap(b => [[b, false], [b, false]]), ...browsers().map(b => [b, true])]) {
+    if (l && answered) break;   // the browser starts; it is the page that gave no answer
     exe = b; loose = l;
     let dom = '';
     try {
@@ -267,7 +268,7 @@ function check() {
       let tall = seen[kind].tabs.find(t => t.id === s.tab)?.height || 0;
       if (s.js) try {
         const dom = run(work, join(work, 'measure.html'), wrap(product, EARLY, `<script>setTimeout(()=>{${stateOf(s)}
-          setTimeout(()=>{const p=document.createElement("pre");p.id="__probe";p.textContent=String(document.documentElement.scrollHeight);document.body.append(p);if(parent!==window)parent.postMessage(p.textContent,"*")},400)},100)</script>`), `${w}x${h}`, ['--dump-dom']);
+          setTimeout(()=>{const p=document.createElement("pre");p.id="__probe";p.textContent=String(document.documentElement.scrollHeight);document.body.append(p);if(parent!==window)parent.postMessage("__probe:"+p.textContent,"*")},400)},100)</script>`), `${w}x${h}`, ['--dump-dom']);
         tall = Math.max(tall, Number(dom.match(/<pre id="__probe">(\d+)<\/pre>/)?.[1] || 0));
       } catch { }
       const late = `<script>setTimeout(()=>{${stateOf(s)} setTimeout(()=>{${banner}},300)},100)</script>`;
@@ -391,7 +392,7 @@ async function serve() {
   const int = (v, max = 1e5) => Math.max(-max, Math.min(max, Math.round(Number(v) || 0))), part = v => Math.max(0, Math.min(1, Number(v) || 0));
   const noteOf = o => ({ n: int(o.n, 999), text: String(o.text || '').slice(0, 2000), x: int(o.x), y: int(o.y), bw: int(o.bw), bh: int(o.bh), ex: int(o.ex), ey: int(o.ey), ew: int(o.ew), eh: int(o.eh), fx: part(o.fx), fy: part(o.fy),
     sel: String(o.sel || '').slice(0, 600), label: String(o.label || '').slice(0, 120), vals: Object.fromEntries(Object.entries(o.vals && typeof o.vals === 'object' ? o.vals : {}).slice(0, 20).map(([k, v]) => [String(k).slice(0, 60), String(v).slice(0, 60)])),
-    vw: int(o.vw), vh: int(o.vh), sx: int(o.sx), sy: int(o.sy), html: typeof o.html === 'string' && o.html.length <= 1e5 ? o.html : '' });
+    vw: int(o.vw), vh: int(o.vh), sx: int(o.sx), sy: int(o.sy), html: typeof o.html === 'string' && Buffer.byteLength(o.html) <= 1e5 ? o.html : '' });
   const server = createServer(async (req, res) => {
     const send = (code, text, type = 'application/json') => { if (res.headersSent) return; res.writeHead(code, { 'content-type': type + '; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' }); res.end(text); };
     try {
@@ -485,7 +486,7 @@ function notePictures(product, tabs) {
       let wide = 700, tall = GAP;
       const html = cells.map((o, i) => {
         const w = Math.max(320, Math.min(1920, Number(o.vw) || 1280)), h = Math.max(600, Math.min(1100, Number(o.vh) || 860));
-        writeFileSync(join(work, `n${i}.html`), wrap(product, EARLY, `<script>setTimeout(()=>{try{(${paintNote})(${inScript(o)},${inScript(t.id)})}catch(e){document.title="ERR "+e.message}},100)</script>`));
+        writeFileSync(join(work, `n${i}.html`), wrap(product, `<meta http-equiv="Content-Security-Policy" content="default-src 'unsafe-inline' data: blob: file:">` + EARLY, `<script>setTimeout(()=>{try{(${paintNote})(${inScript(o)},${inScript(t.id)})}catch(e){document.title="ERR "+e.message}},100)</script>`));
         wide = Math.max(wide, w + 2 * GAP); tall += h + CAP + GAP;
         return `<figure><figcaption>note ${Number(o.n)}: ${text(o.text).slice(0, 150)}</figcaption><iframe src="n${i}.html" style="width:${w}px;height:${h}px"></iframe></figure>`;
       }).join('');

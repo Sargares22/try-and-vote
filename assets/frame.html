@@ -341,7 +341,7 @@
     ru:{levels:['не усложняет','усложняет немного','усложняет заметно'],
       updated:'обновлено', doLabel:'Что нажать', caveat:'Не проверено: ', reset:'Начать сначала',
       yes:'Беру', later:'Позже', no:'Не беру', comment:'Комментарий. Можно надиктовать', next:'Дальше →',
-      mark:'Пометить место на макете', markHint:'Нажмите на место в макете', noteAsk:'Что здесь не так?', noteSave:'Сохранить', noteDel:'Удалить', same:'Здесь пока разницы нет. Нажмите что-нибудь в макете',
+      mark:'Пометить место на макете', markHint:'Нажмите на место в макете', noteAsk:'Что здесь не так?', noteSave:'Сохранить', noteDel:'Удалить', noteMax:'На этой вкладке уже 20 пометок. Удалите лишнюю', same:'Здесь пока разницы нет. Нажмите что-нибудь в макете',
       reply:'Ответ агента', done:'Готово, отправить агенту', sent:'Отправлено агенту. Страницу можно закрыть', notSent:'Не отправилось: агент не слушает. Нажмите «Скопировать ответы»',
       sum:(done, all) => `<b>${done}</b> из ${all} решено`,
       saving:'Сохраняю…', failed:'Не сохранилось. Ответ остался в этом браузере',
@@ -351,7 +351,7 @@
     en:{levels:['adds no complexity','adds a little complexity','adds real complexity'],
       updated:'updated', doLabel:'What to press', caveat:'Not verified: ', reset:'Start over',
       yes:'Take', later:'Later', no:'Skip', comment:'Comment. Dictation works', next:'Next →',
-      mark:'Mark a spot in the mock', markHint:'Press a spot in the mock', noteAsk:'What about this spot?', noteSave:'Save', noteDel:'Delete', same:'No difference here yet. Press something in the mock',
+      mark:'Mark a spot in the mock', markHint:'Press a spot in the mock', noteAsk:'What about this spot?', noteSave:'Save', noteDel:'Delete', noteMax:'This tab already has 20 notes. Delete one first', same:'No difference here yet. Press something in the mock',
       reply:'The agent\'s answer', done:'Done, send to the agent', sent:'Sent to the agent. You can close the page', notSent:'Not sent: the agent is not listening. Press "Copy answers"',
       sum:(done, all) => `<b>${done}</b> of ${all} decided`,
       saving:'Saving…', failed:'Not saved. The answer is kept in this browser',
@@ -385,7 +385,7 @@
   const stage = $('fd-stage'), tools = $('fd-tools'), tabsEl = $('fd-tabs');
   place();
   const lsGet = k => { try { return localStorage.getItem(DEMO.key + k); } catch (_) { return null; } };
-  const lsSet = (k, v) => { try { localStorage.setItem(DEMO.key + k, v); } catch (_) {} };
+  const lsSet = (k, v) => { try { localStorage.setItem(DEMO.key + k, v); return true; } catch (_) { return false; } };
   let cur = 0, vals = {};
   const tab = () => TABS[cur];
 
@@ -437,8 +437,9 @@
   function thingsOf(el){
     const out = [];
     (function walk(e){ for (const c of e.children) {
-      if (c.matches(SOLID) || !c.children.length) out.push(c);
-      else { if ([...c.childNodes].some(n => n.nodeType === 3 && n.textContent.trim())) out.push(c); walk(c); }
+      const seen = c.getClientRects().length;   // nothing drawn for it: hidden, so not a thing (a text that was hidden and now shows is new)
+      if (c.matches(SOLID) || !c.children.length) { if (seen) out.push(c); }
+      else { if (seen && [...c.childNodes].some(n => n.nodeType === 3 && n.textContent.trim())) out.push(c); walk(c); }
     } })(el);
     return out;
   }
@@ -564,7 +565,7 @@
   try { Object.assign(V, JSON.parse(lsGet('') || '{}')); } catch (_) {}
   // The browser copy must never fail for size: past a limit it is kept without the notes' copies of the markup
   const kept = lean => JSON.stringify(V, (k, v) => k === 'notes' && Array.isArray(v) ? v.filter(o => o && o.text) : lean && k === 'html' ? '' : v);
-  const keep = () => { let s = kept(false); if (s.length > 2e6) s = kept(true); lsSet('', s); };
+  const keep = () => { const s = kept(false); if (s.length > 2e6 || !lsSet('', s)) lsSet('', kept(true)); };
   const vYes = $('fd-yes'), vLater = $('fd-later'), vNo = $('fd-no'), vText = $('fd-comment'), vState = $('fd-vstate');
   const clean = x => { x = x && typeof x === 'object' ? x : {}; return {verdict:['yes', 'later', 'no'].includes(x.verdict) ? x.verdict : '', comment:String(x.comment || ''), notes:Array.isArray(x.notes) ? x.notes.filter(o => o && typeof o === 'object' && o.text) : [], at:String(x.at || '')}; };
   // Answers the outside store has not confirmed. While there are any, the page does not say "sent".
@@ -677,7 +678,7 @@
     });
     for (const [c, im] of swap) c.replaceWith(im);
     const html = copy.innerHTML;
-    return html.length <= 1e5 ? html : '';
+    return new TextEncoder().encode(html).length <= 1e5 ? html : '';
   }
   function stopMarking(){
     if (marking) marking.remove();
@@ -710,6 +711,7 @@
     }
     const says = el === body ? '' : (el.getAttribute('aria-label') || el.innerText || el.value || el.alt || el.placeholder || '').trim().replace(/\s+/g, ' ').slice(0, 60);
     const x = V[id] = V[id] || {}, list = x.notes = x.notes || [];
+    if (list.length >= 20) { say(T.noteMax, 3200); return; }   // the store keeps twenty a tab: a twenty-first would be lost without a word
     const note = {n:Math.max(0, ...list.map(o => o.n)) + 1, text:'', x:px(cx - x0), y:px(cy - y0), bw:box.clientWidth, bh:box.clientHeight,
       ex:px(r.left - x0), ey:px(r.top - y0), ew:px(r.width), eh:px(r.height), fx:r.width ? (cx - r.left) / r.width : .5, fy:r.height ? (cy - r.top) / r.height : .5,
       sel:path.join(' > '), label:(el === body ? '' : el.tagName.toLowerCase()) + (says ? ` "${says}"` : ''), vals:{...vals},
@@ -789,7 +791,8 @@
   // A new revision opens on the first tab, which is the updated one. Otherwise the #anchor, then the last tab seen.
   let start = TABS.findIndex(t => '#' + t.id === location.hash);
   if (start < 0) start = TABS.findIndex(t => t.id === lsGet('-tab'));
-  if (lsGet('-rev') !== String(DEMO.rev)) { start = 0; lsSet('-rev', String(DEMO.rev)); }
+  const REV = String(window.__demoRev || DEMO.rev);
+  if (lsGet('-rev') !== REV) { start = 0; lsSet('-rev', REV); }
   go(start < 0 ? 0 : start);
 
   (async () => {
