@@ -463,24 +463,27 @@ function verdicts(src = args[0], known = null) {
   else { console.error('Give verdicts.json, a folder of <id>.json files, or "-" for standard input.'); process.exit(2); }
   if (Array.isArray(all)) all = Object.fromEntries(all.map(d => [d.id || d.doc_id, d.data || d.fields || d]));
 
-  let ids = Object.keys(all);
+  let ids = Object.keys(all), titles = {};
   if (known) {
     known = Array.isArray(known) ? known.filter(t => t && typeof t.id === 'string') : [];
     ids = known.map(t => t.id);
+    for (const t of known) titles[t.id] = t.title;
     for (const id of Object.keys(all)) if (!ids.includes(id)) ids.push(id);
   } else if (flags.page) {
-    ids = withWork(work => probe(work, need(flags.page), '1280x860')).tabs.map(t => t.id);
+    const tabs = withWork(work => probe(work, need(flags.page), '1280x860')).tabs;
+    ids = tabs.map(t => t.id);
+    for (const t of tabs) titles[t.id] = t.title;
     for (const id of Object.keys(all)) if (!ids.includes(id)) ids.push(id);
   }
   const piles = { TAKE: [], LATER: [], SKIP: [], 'COMMENT, NO VERDICT': [], UNTOUCHED: [] };
   for (const id of ids) {
     const v = all[id] && typeof all[id] === 'object' ? all[id] : {}, comment = String(v.comment || '').trim();
-    piles[{ yes: 'TAKE', later: 'LATER', no: 'SKIP' }[v.verdict] || (comment ? 'COMMENT, NO VERDICT' : 'UNTOUCHED')].push({ id, title: String(v.title || ''), comment, at: String(v.at || '') });
+    piles[{ yes: 'TAKE', later: 'LATER', no: 'SKIP' }[v.verdict] || (comment ? 'COMMENT, NO VERDICT' : 'UNTOUCHED')].push({ id, title: String(v.title || titles[id] || ''), comment, at: String(v.at || '') });
   }
   for (const [name, list] of Object.entries(piles)) {
     console.log(`${name} (${list.length})`);
     for (const x of list) {
-      console.log(`  ${x.id}${x.title ? ' — ' + x.title : ''}${x.at ? '  [' + x.at.slice(0, 16).replace('T', ' ') + ']' : ''}`);
+      console.log(`  ${x.title ? x.title + '  (tab id: ' + x.id + ')' : 'tab id: ' + x.id}${x.at ? '  [' + x.at.slice(0, 16).replace('T', ' ') + ']' : ''}`);
       if (x.comment) console.log(`      ${/[?？]/.test(x.comment) ? 'QUESTION' : 'comment'}: ${x.comment.replace(/\s+/g, ' ')}`);
     }
   }
