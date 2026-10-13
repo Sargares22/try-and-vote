@@ -1,17 +1,62 @@
-# Try and vote
+<p align="center"><b>EN</b> · <a href="README.ru.md">RU</a></p>
 
-Coding agents usually propose features as a wall of text. The product owner has to read proposals, imagine interfaces and guess trade-offs. With try-and-vote the agent builds one interactive page instead. You touch each candidate feature inside a mock of your real product, switch between variants, and answer take, later or skip with a comment. The agent reads your answers back and acts on them.
+<h1 align="center">Try and vote</h1>
+
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-8ab4ff" alt="MIT"></a>
+  <img src="https://img.shields.io/badge/Node-18%2B-8ab4ff" alt="Node 18 or newer">
+  <img src="https://img.shields.io/badge/dependencies-none-8ab4ff" alt="No dependencies">
+  <img src="https://img.shields.io/badge/agents-Claude%20Code%20%7C%20Codex%20%7C%20Cursor%20%7C%20Antigravity-8ab4ff" alt="Claude Code, Codex, Cursor, Antigravity">
+</p>
+
+<p align="center">
+  <a href="#install">Install</a> · <a href="#what-the-owner-sees">What the owner sees</a> · <a href="#notes-on-the-mock">Notes on the mock</a> · <a href="#how-it-works-for-the-agent">For the agent</a> · <a href="#measured">Measured</a>
+</p>
+
+Try and vote is a skill for coding agents. Agents usually propose features as a wall of text, and the product owner has to read proposals, imagine interfaces and guess trade-offs. With this skill the agent builds one interactive page instead. You touch each candidate feature inside a mock of your real product, switch between variants, and answer take, later or skip with a comment. The agent reads your answers back and acts on them.
+
+<p align="center">
+  <img src="docs/page.png" width="820" alt="A try-and-vote page: the brief and the verdict on the left, the product mock on the right">
+</p>
+
+<p align="center">
+  <a href="https://github.com/Sargares22/try-and-vote/releases/download/v1.0.0/try-and-vote-film.mp4"><img src="docs/film.jpg" width="820" alt="Watch the one-minute film"></a><br>
+  <a href="https://github.com/Sargares22/try-and-vote/releases/download/v1.0.0/try-and-vote-film.mp4">Watch the one-minute film</a>
+</p>
+
+## Install
+
+```sh
+npx skills add Sargares22/try-and-vote
+```
+
+Then ask your agent to show you the options, for example: "show me three ways to do the onboarding, I want to try them".
+
+Needs Node.js 18 or newer and Chrome, Chromium or Edge. Inside WSL the Windows browser is used. No other dependencies.
 
 ## What the owner sees
 
-- A tab for each candidate feature, marked once it is decided.
-- A brief: what the feature is, how much it complicates the product, and what to press.
-- A switch between variants, or between "as now" and the new behaviour.
-- A working mock on a phone, a tablet, a desktop window, a browser, a single component or the full stage.
-- Three verdict buttons: take, later, skip.
-- A comment box. Dictation works.
-- A "mark a spot" button: press any place in the mock and leave a note on it. The agent gets the note with the element, its coordinates and a picture of that spot as you saw it.
-- A "done" button that hands the answers to the agent.
+- **A tab for each candidate feature**, marked once it is decided.
+- **A brief.** What the feature is, how much it complicates the product, and what to press.
+- **A switch** between variants, or between "as now" and the new behaviour.
+- **A working mock** on a phone, a tablet, a desktop window, a browser, a single component or the full stage.
+- **Three verdict buttons:** take, later, skip.
+- **A comment box.** Dictation works.
+- **A "done" button** that hands the answers to the agent.
+
+## Notes on the mock
+
+Press "mark a spot", then press any place in the mock and write what is wrong there. A numbered mark stays on the spot and the note joins the list under your comment.
+
+<p align="center">
+  <img src="docs/notes.png" width="820" alt="Two numbered notes on the mock and the list of them under the comment">
+</p>
+
+The agent gets each note with the element you pressed, its coordinates inside the mock, and a picture of the mock as you saw it: buttons pressed, text typed, lists scrolled, the spot ringed and numbered.
+
+<p align="center">
+  <img src="docs/note-for-agent.png" width="820" alt="What the agent receives: the mock in the state the owner saw, the noted spot ringed">
+</p>
 
 ## How it works for the agent
 
@@ -19,9 +64,11 @@ Coding agents usually propose features as a wall of text. The product owner has 
 2. **Write one file.** Fill `demo.html` with the product mock and the tabs. The frame around it comes from the script.
 3. **Check.** `node scripts/demo.mjs check <folder>/demo.html` checks the rules and takes pictures.
 4. **Serve.** `node scripts/demo.mjs serve <folder>/demo.html` in the background; give the owner the address.
-5. **Read answers.** When the owner presses "done", the server prints the answers in piles and exits.
+5. **Read answers.** When the owner presses "done", the server prints the answers in piles, draws the noted spots and exits.
 
 The server also exits by itself 20 minutes after the page was closed, and runs once per page.
+
+It works in any agent harness. A Claude artifact can hold the page too, but it is an extra, not a requirement. With no server at all, the page opens from disk and the owner presses "copy answers".
 
 ## What the script enforces
 
@@ -32,19 +79,6 @@ The server also exits by itself 20 minutes after the page was closed, and runs o
 - Tabs changed since the owner last looked are marked as updated.
 - One sheet of pictures per tab, every state side by side, for the agent to look at before showing the page.
 
-## Requirements
-
-- Node.js 18 or newer.
-- Chrome, Chromium or Edge. Inside WSL the Windows browser is used.
-- No dependencies.
-- Any agent harness: Claude Code, Codex, Cursor, Antigravity. Claude artifacts are optional, not required.
-
-## Install
-
-```sh
-npx skills add Sargares22/try-and-vote
-```
-
 ## Measured
 
 Fifteen builds by three Claude models (Opus 5.5, Sonnet 5.5, Haiku 5.5), five each. Every build ran in a fresh thread; the three models got the same three briefs.
@@ -52,11 +86,11 @@ Fifteen builds by three Claude models (Opus 5.5, Sonnet 5.5, Haiku 5.5), five ea
 - All 15 passed the script's rules and a grader that presses the built page itself.
 - Mean time was 3.7 to 4.5 minutes per page.
 - In a blind look at the pictures of one task, the larger models adapted the mock to phone width better than the smallest. The script did not see that difference; eyes did.
-- Not measured: other vendors' models, and real products with real source files.
+- Not measured: other vendors' models, and real products with real source files. Notes on the mock were added after these runs.
 
 ## Limits
 
-The mock is drawn by the agent and is only as faithful as the files it was given. The script checks that controls respond; taste is still judged by eyes.
+The mock is drawn by the agent and is only as faithful as the files it was given. The script checks that controls respond; taste is still judged by eyes. A note's picture is redrawn from the mock's markup, so a canvas or a video inside the mock may look different in it.
 
 ## Developing the skill
 
@@ -64,4 +98,4 @@ The mock is drawn by the agent and is only as faithful as the files it was given
 
 ## License
 
-MIT
+[MIT](LICENSE)

@@ -460,7 +460,8 @@
   let store = null, typeTimer = null;
   try { Object.assign(V, JSON.parse(lsGet('') || '{}')); } catch (_) {}
   // The browser copy must never fail for size: past a limit it is kept without the notes' copies of the markup
-  const keep = () => { let s = JSON.stringify(V); if (s.length > 2e6) s = JSON.stringify(V, (k, v) => k === 'html' ? '' : v); lsSet('', s); };
+  const kept = lean => JSON.stringify(V, (k, v) => k === 'notes' && Array.isArray(v) ? v.filter(o => o && o.text) : lean && k === 'html' ? '' : v);
+  const keep = () => { let s = kept(false); if (s.length > 2e6) s = kept(true); lsSet('', s); };
   const vYes = $('fd-yes'), vLater = $('fd-later'), vNo = $('fd-no'), vText = $('fd-comment'), vState = $('fd-vstate');
   const clean = x => { x = x && typeof x === 'object' ? x : {}; return {verdict:['yes', 'later', 'no'].includes(x.verdict) ? x.verdict : '', comment:String(x.comment || ''), notes:Array.isArray(x.notes) ? x.notes.filter(o => o && typeof o === 'object' && o.text) : [], at:String(x.at || '')}; };
   // Answers the outside store has not confirmed. While there are any, the page does not say "sent".
@@ -586,7 +587,8 @@
     layer.className = 'fd-catch'; hl.className = 'fd-hl'; hl.hidden = true; layer.append(hl); box.append(layer);
     pinBtn.setAttribute('aria-pressed', true); $('fd-hint').hidden = false;
     // the catching layer lies on top, so the thing under the pointer is looked up through it
-    const under = (x, y) => document.elementsFromPoint(x, y).find(e => e !== body && body.contains(e)) || body;
+    // and a press on an icon or a label inside a button means the button
+    const under = (x, y) => { const e = document.elementsFromPoint(x, y).find(e => e !== body && body.contains(e)), b = e && e.closest('button,a,[role=button],[data-touch],label,select'); return b && b !== body && body.contains(b) ? b : e || body; };
     layer.addEventListener('pointermove', e => {
       const r = under(e.clientX, e.clientY).getBoundingClientRect(), b = box.getBoundingClientRect();
       Object.assign(hl.style, {left:r.left - b.left - box.clientLeft + 'px', top:r.top - b.top - box.clientTop + 'px', width:r.width + 'px', height:r.height + 'px'});
@@ -612,7 +614,7 @@
   }
   function openNote(note, fresh){
     editing = {note, fresh, id:tab().id};
-    $('fd-note-on').textContent = note.label; noteText.value = note.text; $('fd-note-del').hidden = !!fresh; noteBox.hidden = false;
+    $('fd-note-on').textContent = (String(note.label || '').match(/"(.*)"$/) || [])[1] || ''; noteText.value = note.text; $('fd-note-del').hidden = !!fresh; noteBox.hidden = false;
     // beside the spot and inside the page; the page's container is what the editor is placed in
     const fd = noteBox.parentElement.getBoundingClientRect(), box = surface(), b = box.getBoundingClientRect(), w = noteBox.offsetWidth, h = noteBox.offsetHeight;
     const x = b.left + box.clientLeft + (note.bw ? note.x / note.bw : .5) * box.clientWidth, y = b.top + box.clientTop + (note.bh ? note.y / note.bh : .5) * box.clientHeight;
@@ -644,6 +646,8 @@
   $('fd-note-save').addEventListener('click', () => endNote('save'));
   $('fd-note-del').addEventListener('click', () => endNote('drop'));
   noteText.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) endNote('save'); });
+  // A press anywhere else closes the editor and keeps what was typed; a mark or a list row reopens through its own click
+  addEventListener('pointerdown', e => { if (editing && !noteBox.contains(e.target) && !e.target.closest?.('.fd-pins, .fd-notes')) endNote('save'); }, true);
   addEventListener('keydown', e => { if (e.key !== 'Escape') return; if (marking) stopMarking(); else endNote('cancel'); });
 
   // ---------- copy the answers out, paste them in: the way that works with no store at all ----------
