@@ -4,7 +4,7 @@
 //    page, and "stop" ends it.
 // For developing the skill. Using the skill needs none of this.
 import { execFileSync, spawn } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -90,11 +90,20 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
     say(await code('/.secret') === 404 && await code('/notes.txt') === 404 && await code('/verdicts.json') === 404, 'dot-files and files a page has no use for are not served');
     say(await code('/__done', { method: 'POST', headers: { origin: 'http://evil.example' } }) === 403, 'a write from another site is refused');
     say(await code('/__stop', { method: 'POST', headers: { 'x-token': 'guess' } }) === 403 && await code('/') === 200, 'stop without the server\'s own token is refused');
-    say(await code('/__verdicts/all', { method: 'PUT', body: 'x'.repeat(3e5) }) !== 200 && await code('/') === 200, 'an oversized answer is refused and the server lives on');
+    say(await code('/__verdicts/all', { method: 'PUT', body: 'x'.repeat(3e6) }) !== 200 && await code('/') === 200, 'an oversized answer is refused and the server lives on');
     await fetch(u + '/__verdicts/all', { method: 'PUT', body: JSON.stringify({ verdict: 'maybe', comment: 7, at: 5, extra: 'x' }) });
     const kept = JSON.parse(readFileSync(join(work, 'verdicts.json'), 'utf8')).all;
     say(kept.verdict === '' && kept.comment === '7' && kept.at === '5' && !('extra' in kept), 'an answer is stored as an answer: known fields, as text');
+    await fetch(u + '/__verdicts/all', { method: 'PUT', body: JSON.stringify({ verdict: 'yes', notes: [{ n: 1, text: 'Too small?', x: '12', y: 30, bw: 300, bh: 500, label: 'button "Go"', vals: { mode: 'new' }, html: '<button data-fd-note>Go</button>', extra: 1 }, { n: 2 }, 'junk'] }) });
+    const noted = JSON.parse(readFileSync(join(work, 'verdicts.json'), 'utf8')).all.notes;
+    say(noted.length === 1 && noted[0].x === 12 && noted[0].html.includes('data-fd-note') && !('extra' in noted[0]), 'a note on the mock is stored with its spot; a note without text is not');
+    const piles = run(['verdicts', join(work, 'verdicts.json')]);
+    say(piles.includes('QUESTION 1, on a spot of the mock: Too small?') && piles.includes('pressed at x=12 y=30 of a 300x500 mock') && piles.includes('switches: mode=new'), 'the answers name the noted spot and its coordinates', piles.slice(0, 300));
   } finally { run(['stop', page]); child.kill(); }
+}
+if (!fast) {
+  const out = run(['verdicts', join(work, 'verdicts.json'), '--page', page]);
+  say(out.includes('Pictures of the noted spots') && existsSync(join(work, 'out', 'notes', 'all.png')), 'a noted spot gets a picture', out.includes('Pictures of') ? '' : out.slice(-300));
 }
 {
   const bad = run(['serve', page, '--port', 'nope'], { timeout: 20000 });

@@ -40,13 +40,17 @@ The pictures show every tab and every switch position. A state reached another w
 several presses, a timer that ran out) goes into `shots.json` beside `demo.html`:
 `[{"name": "...", "tab": "id", "set": {"switch": "value"}, "js": "script run in the page", "kind": "phone"}]`.
 
+The owner can also mark a spot in the mock and write a note on it. The answers then give each note
+with what was pressed and where (pixels of the mock), and `out/notes/<tab>.png`: the mock as the
+owner saw it, the spot ringed and numbered. Open those pictures before you answer.
+
 - **Any harness:** start `serve` as a background command and give the owner the address
   (`--lan` for their tablet or phone). It ends when they press "done" and prints the piles.
   It also ends by itself 20 minutes after the page was closed, and runs once per page; do not
   leave servers behind: `stop` ends them.
 - **Claude with artifacts, as an extra:** publish `out/page.html` with
   `capabilities: {"db": {}}`, read with `ArtifactData` (`list`, collection `verdicts`,
-  `out_dir`), pass that folder to `verdicts`. The artifact store needs a paid Claude plan;
+  `out_dir`), pass that folder to `verdicts` (with `--page`, so noted spots get pictures). The artifact store needs a paid Claude plan;
   do not make it the only way.
 - **No server possible:** send `out/standalone.html`; the owner presses "copy answers".
 

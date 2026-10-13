@@ -10,6 +10,7 @@ Coding agents usually propose features as a wall of text. The product owner has 
 - A working mock on a phone, a tablet, a desktop window, a browser, a single component or the full stage.
 - Three verdict buttons: take, later, skip.
 - A comment box. Dictation works.
+- A "mark a spot" button: press any place in the mock and leave a note on it. The agent gets the note with the element, its coordinates and a picture of that spot as you saw it.
 - A "done" button that hands the answers to the agent.
 
 ## How it works for the agent

@@ -18,7 +18,8 @@
 //       it prints the answers in piles and exits: start it as a background command and you are woken.
 //       It also exits by itself 20 minutes after the page was closed, and never runs twice for one page.
 //   node demo.mjs verdicts <verdicts.json | folder of <id>.json | -> [--page demo.html]
-//       The answers sorted into piles. "-" reads JSON from standard input.
+//       The answers sorted into piles. "-" reads JSON from standard input. With --page, the spots the
+//       owner marked in the mock are also drawn: out/notes/<tab>.png, each spot ringed and numbered.
 //   node demo.mjs brief <folder>
 //       Handing the build to another agent: first run writes brief.json to fill in, the next prints
 //       the text to give the builder. check then also checks the page against the brief.
@@ -71,7 +72,7 @@ const wrap = (product, early = '', late = '') => `${HEAD}${early}</head><body>\n
 // Windows paths and a working folder on a Windows drive.
 const wsl = process.platform === 'linux' && /microsoft/i.test(release());
 const winPath = p => execFileSync('wslpath', ['-w', p], { encoding: 'utf8' }).trim();
-function browsers() {
+function browsers(soft) {
   const pf = [process.env['ProgramFiles(x86)'], process.env.ProgramFiles, process.env.LOCALAPPDATA].filter(Boolean);
   const found = [process.env.DEMO_BROWSER,
     ...pf.map(p => join(p, 'Google/Chrome/Application/chrome.exe')), ...pf.map(p => join(p, 'Microsoft/Edge/Application/msedge.exe')),
@@ -79,6 +80,7 @@ function browsers() {
     '/usr/bin/google-chrome', '/usr/bin/google-chrome-stable', '/usr/bin/chromium', '/usr/bin/chromium-browser', '/snap/bin/chromium', '/usr/bin/microsoft-edge',
     ...(wsl ? ['/mnt/c/Program Files/Google/Chrome/Application/chrome.exe', '/mnt/c/Program Files (x86)/Google/Chrome/Application/chrome.exe',
       '/mnt/c/Program Files (x86)/Microsoft/Edge/Application/msedge.exe', '/mnt/c/Program Files/Microsoft/Edge/Application/msedge.exe'] : [])].filter(p => p && existsSync(p));
+  if (!found.length && soft) return found;
   if (!found.length) { console.error('No Chrome, Chromium or Edge found, and check needs one for its rules and pictures.\nInstall one or set DEMO_BROWSER to a browser executable.'); process.exit(2); }
   return found;
 }
@@ -386,7 +388,7 @@ async function serve() {
     if (ending) return; ending = true;
     console.log(`\n${why}\n`);
     // The open page has told which tabs it has: no browser is started to find out
-    try { if (!existsSync(file)) writeFileSync(file, '{}'); verdicts(file, tabsKnown || []); } catch (e) { console.log('The answers could not be printed: ' + e.message + '\nThey are in ' + file); }
+    try { if (!existsSync(file)) writeFileSync(file, '{}'); verdicts(file, tabsKnown || [], product); } catch (e) { console.log('The answers could not be printed: ' + e.message + '\nThey are in ' + file); }
     setTimeout(() => process.exit(0), 200);
   };
   process.on('exit', () => { try { writeFileSync(REG, JSON.stringify(registry().filter(s => s.token !== token))); } catch { } });
@@ -401,6 +403,11 @@ async function serve() {
   const local = req => ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress);
   // The body of a request, up to a limit; more than that ends the request
   const body = (req, max) => new Promise((ok, no) => { const parts = []; let size = 0; req.on('data', c => { if ((size += c.length) > max) { no(new Error('too large')); req.destroy(); } else parts.push(c); }); req.on('end', () => ok(Buffer.concat(parts).toString('utf8'))); req.on('error', no); });
+  // A note on the mock, as the page sends it: numbers as numbers, texts of a sane length
+  const int = (v, max = 1e5) => Math.max(-max, Math.min(max, Math.round(Number(v) || 0))), part = v => Math.max(0, Math.min(1, Number(v) || 0));
+  const noteOf = o => ({ n: int(o.n, 999), text: String(o.text || '').slice(0, 2000), x: int(o.x), y: int(o.y), bw: int(o.bw), bh: int(o.bh), ex: int(o.ex), ey: int(o.ey), ew: int(o.ew), eh: int(o.eh), fx: part(o.fx), fy: part(o.fy),
+    sel: String(o.sel || '').slice(0, 600), label: String(o.label || '').slice(0, 120), vals: Object.fromEntries(Object.entries(o.vals && typeof o.vals === 'object' ? o.vals : {}).slice(0, 20).map(([k, v]) => [String(k).slice(0, 60), String(v).slice(0, 60)])),
+    vw: int(o.vw), vh: int(o.vh), sx: int(o.sx), sy: int(o.sy), html: typeof o.html === 'string' && o.html.length <= 1e5 ? o.html : '' });
   const server = createServer(async (req, res) => {
     const send = (code, text, type = 'application/json') => { if (res.headersSent) return; res.writeHead(code, { 'content-type': type + '; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' }); res.end(text); };
     try {
@@ -422,15 +429,15 @@ async function serve() {
       // The owner pressed "done": print the answers and stop, which wakes an agent that started this in the background
       if (path === '/__done' && req.method === 'POST') {
         send(200, '{"ok":true}');
-        if ('stay' in flags) { console.log('\nThe owner pressed "done".\n'); try { verdicts(file, tabsKnown || []); } catch (e) { console.log('The answers could not be printed: ' + e.message); } } else bye('The owner pressed "done".');
+        if ('stay' in flags) { console.log('\nThe owner pressed "done".\n'); try { verdicts(file, tabsKnown || [], product); } catch (e) { console.log('The answers could not be printed: ' + e.message); } } else bye('The owner pressed "done".');
         return;
       }
       const m = path.match(/^\/__verdicts\/([\w.~:@+-]{1,200})$/);
       if (m && req.method === 'PUT') {
-        let v; try { v = JSON.parse(await body(req, 2e5)); if (!v || typeof v !== 'object') throw new Error('not an object'); } catch (e) { return send(400, JSON.stringify({ error: String(e.message) })); }
+        let v; try { v = JSON.parse(await body(req, 2.5e6)); if (!v || typeof v !== 'object') throw new Error('not an object'); } catch (e) { return send(400, JSON.stringify({ error: String(e.message) })); }
         // only the fields of an answer are kept, each as text of a sane length
         const all = read();
-        all[m[1]] = { verdict: ['yes', 'later', 'no'].includes(v.verdict) ? v.verdict : '', comment: String(v.comment || '').slice(0, 5000), title: String(v.title || '').slice(0, 300), at: String(v.at || '').slice(0, 40) };
+        all[m[1]] = { verdict: ['yes', 'later', 'no'].includes(v.verdict) ? v.verdict : '', comment: String(v.comment || '').slice(0, 5000), notes: (Array.isArray(v.notes) ? v.notes : []).filter(o => o && typeof o === 'object' && o.text).slice(0, 20).map(noteOf), title: String(v.title || '').slice(0, 300), at: String(v.at || '').slice(0, 40) };
         writeFileSync(file, JSON.stringify(all, null, 1));
         return send(200, '{"ok":true}');
       }
@@ -452,8 +459,69 @@ async function serve() {
   server.listen(port, where);
 }
 
+// ---------- pictures of the spots the owner marked ----------
+// Runs in the page, never in Node. Puts the mock back as it stood when the note was written (its
+// markup travelled with the note), rings the pressed thing and puts the note's number on the spot.
+function paintNote(o, tab) {
+  try { demo.go(tab); for (const [c, v] of Object.entries(o.vals || {})) demo.set(c, v); } catch (e) { }
+  let body = document.querySelector('#fd-stage .fd-s-body'), el = null;
+  if (o.html) {
+    // The markup came from outside: nothing in it may run
+    const t = document.createElement('template'); t.innerHTML = o.html;
+    for (const e of t.content.querySelectorAll('script,iframe,frame,object,embed,link,meta,base')) e.remove();
+    for (const e of t.content.querySelectorAll('*')) for (const a of [...e.attributes]) if (/^on/i.test(a.name) || /^\s*javascript:/i.test(a.value)) e.removeAttribute(a.name);
+    // a fresh body, so a mock that redraws itself on a timer cannot wipe the picture
+    const fresh = body.cloneNode(false); fresh.append(t.content); body.replaceWith(fresh); body = fresh;
+    for (const e of body.querySelectorAll('[data-fd-scroll]')) { const [x, y] = e.dataset.fdScroll.split(','); e.scrollLeft = Number(x); e.scrollTop = Number(y); }
+    body.scrollLeft = o.sx; body.scrollTop = o.sy;
+    el = body.querySelector('[data-fd-note]');
+  } else try { el = o.sel ? body.querySelector(':scope > ' + o.sel) : null; } catch (e) { }
+  const box = body.closest('.fd-surface'), b = box.getBoundingClientRect(), r = el && el.getBoundingClientRect();
+  const x = scrollX + (r ? r.left + o.fx * r.width : b.left + box.clientLeft + (o.bw ? o.x / o.bw : .5) * box.clientWidth);
+  const y = scrollY + (r ? r.top + o.fy * r.height : b.top + box.clientTop + (o.bh ? o.y / o.bh : .5) * box.clientHeight);
+  const add = css => { const d = document.createElement('div'); d.style.cssText = 'position:absolute;z-index:99999;pointer-events:none;box-sizing:border-box;' + css; document.body.append(d); return d; };
+  if (r) add(`left:${scrollX + r.left - 4}px;top:${scrollY + r.top - 4}px;width:${r.width + 8}px;height:${r.height + 8}px;border:3px solid #ff2d78;border-radius:7px;box-shadow:0 0 0 2px #fff,inset 0 0 0 2px #fff`);
+  // the number sits on the ring's corner so it hides nothing; a dot shows where exactly the press landed
+  if (r) add(`left:${x - 5}px;top:${y - 5}px;width:10px;height:10px;border-radius:50%;background:#ff2d78;box-shadow:0 0 0 2px #fff`);
+  const nx = r ? scrollX + r.left - 4 : x, ny = r ? scrollY + r.top - 4 : y;
+  add(`left:${nx - 13}px;top:${ny - 13}px;width:26px;height:26px;border-radius:50%;background:#ff2d78;color:#fff;font:700 14px/26px system-ui,sans-serif;text-align:center;box-shadow:0 0 0 2px #fff,0 2px 8px #0008`).textContent = o.n;
+  scrollTo(0, Math.max(0, y - innerHeight / 2));
+}
+function notePictures(product, tabs) {
+  const dir = join(dirname(product), 'out', 'notes'), found = exe ? [exe] : browsers(true), GAP = 14, CAP = 30, wrote = [];
+  if (!found.length) throw new Error('no Chrome, Chromium or Edge on this machine');
+  rmSync(dir, { recursive: true, force: true }); mkdirSync(dir, { recursive: true });
+  const text = s => String(s).replace(/\s+/g, ' ').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+  // what goes into a script tag must not be able to close it
+  const inScript = v => JSON.stringify(v).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
+  withWork(work => {
+    for (const t of tabs) for (let from = 0; from < t.notes.length; from += 8) {
+      // One sheet per tab, the notes one under another, each at the size of the owner's window
+      const cells = t.notes.slice(from, from + 8), name = t.id.replace(/[^\w-]/g, '_') + (from ? '-' + (from / 8 + 1) : '') + '.png', png = join(work, 'notes.png');
+      let wide = 700, tall = GAP;
+      const html = cells.map((o, i) => {
+        const w = Math.max(320, Math.min(1920, Number(o.vw) || 1280)), h = Math.max(600, Math.min(1100, Number(o.vh) || 860));
+        writeFileSync(join(work, `n${i}.html`), wrap(product, EARLY, `<script>setTimeout(()=>{try{(${paintNote})(${inScript(o)},${inScript(t.id)})}catch(e){document.title="ERR "+e.message}},100)</script>`));
+        wide = Math.max(wide, w + 2 * GAP); tall += h + CAP + GAP;
+        return `<figure><figcaption>note ${Number(o.n)}: ${text(o.text).slice(0, 150)}</figcaption><iframe src="n${i}.html" style="width:${w}px;height:${h}px"></iframe></figure>`;
+      }).join('');
+      const sheet = `<!doctype html><meta charset=utf8><style>body{margin:0;padding:${GAP}px;background:#5a5a5a;display:flex;flex-direction:column;gap:${GAP}px;align-items:flex-start;font:600 15px system-ui,sans-serif;color:#fff}
+        figure{margin:0}figcaption{height:${CAP}px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:${wide - 2 * GAP}px}iframe{display:block;border:0;background:#000}</style>${html}`;
+      for (const b of found.flatMap(b => [b, b])) {
+        exe = b;
+        try { run(work, join(work, 'sheet.html'), sheet, `${wide}x${tall}`, [`--screenshot=${png}`]); } catch { }
+        if (existsSync(png)) break;
+      }
+      if (!existsSync(png)) throw new Error('the browser wrote nothing');
+      copyFileSync(png, join(dir, name)); rmSync(png);
+      wrote.push(`  ${join(dir, name)}   (${t.title || t.id}: ${cells.map(o => 'note ' + Number(o.n)).join(', ')})`);
+    }
+  });
+  console.log('\nPictures of the noted spots: the mock as the owner saw it, the pressed thing ringed, the note\'s number on the spot.\n' + wrote.join('\n') + '\nOpen them before you answer: a note is about that spot in that state.');
+}
+
 // ---------- the answers, sorted into piles ----------
-function verdicts(src = args[0], known = null) {
+function verdicts(src = args[0], known = null, product = flags.page ? need(flags.page) : null) {
   let all = {};
   if (src === '-') all = JSON.parse(readFileSync(0, 'utf8'));
   else if (src && existsSync(src) && statSync(src).isDirectory())
@@ -470,7 +538,7 @@ function verdicts(src = args[0], known = null) {
     for (const t of known) titles[t.id] = t.title;
     for (const id of Object.keys(all)) if (!ids.includes(id)) ids.push(id);
   } else if (flags.page) {
-    const tabs = withWork(work => probe(work, need(flags.page), '1280x860')).tabs;
+    const tabs = withWork(work => probe(work, product, '1280x860')).tabs;
     ids = tabs.map(t => t.id);
     for (const t of tabs) titles[t.id] = t.title;
     for (const id of Object.keys(all)) if (!ids.includes(id)) ids.push(id);
@@ -478,15 +546,27 @@ function verdicts(src = args[0], known = null) {
   const piles = { TAKE: [], LATER: [], SKIP: [], 'COMMENT, NO VERDICT': [], UNTOUCHED: [] };
   for (const id of ids) {
     const v = all[id] && typeof all[id] === 'object' ? all[id] : {}, comment = String(v.comment || '').trim();
-    piles[{ yes: 'TAKE', later: 'LATER', no: 'SKIP' }[v.verdict] || (comment ? 'COMMENT, NO VERDICT' : 'UNTOUCHED')].push({ id, title: String(v.title || titles[id] || ''), comment, at: String(v.at || '') });
+    const notes = (Array.isArray(v.notes) ? v.notes : []).filter(o => o && typeof o === 'object' && String(o.text || '').trim())
+      .map(o => ({ ...o, ...Object.fromEntries(['n', 'x', 'y', 'bw', 'bh', 'ex', 'ey', 'ew', 'eh', 'fx', 'fy', 'vw', 'vh', 'sx', 'sy'].map(k => [k, Number(o[k]) || 0])) }));
+    piles[{ yes: 'TAKE', later: 'LATER', no: 'SKIP' }[v.verdict] || (comment || notes.length ? 'COMMENT, NO VERDICT' : 'UNTOUCHED')].push({ id, title: String(v.title || titles[id] || ''), comment, notes, at: String(v.at || '') });
   }
   for (const [name, list] of Object.entries(piles)) {
     console.log(`${name} (${list.length})`);
     for (const x of list) {
       console.log(`  ${x.title ? x.title + '  (tab id: ' + x.id + ')' : 'tab id: ' + x.id}${x.at ? '  [' + x.at.slice(0, 16).replace('T', ' ') + ']' : ''}`);
       if (x.comment) console.log(`      ${/[?？]/.test(x.comment) ? 'QUESTION' : 'comment'}: ${x.comment.replace(/\s+/g, ' ')}`);
+      // a note is about one spot of the mock: what was pressed, and where, in pixels of the mock
+      for (const o of x.notes) {
+        const sw = Object.entries(o.vals && typeof o.vals === 'object' ? o.vals : {}).map(([k, v]) => `${k}=${v}`).join(', ');
+        console.log(`      ${/[?？]/.test(o.text) ? 'QUESTION' : 'note'} ${Number(o.n)}, on a spot of the mock: ${String(o.text).replace(/\s+/g, ' ')}`);
+        console.log(`          spot: ${o.label ? o.label + (o.sel ? `  (${o.sel})` : '') : 'the mock itself'}; pressed at x=${Number(o.x)} y=${Number(o.y)} of a ${Number(o.bw)}x${Number(o.bh)} mock`
+          + (o.ew ? `; the thing is ${Number(o.ew)}x${Number(o.eh)} at x=${Number(o.ex)} y=${Number(o.ey)}` : '') + (sw ? `; switches: ${sw}` : '') + `; the owner's window was ${Number(o.vw)}x${Number(o.vh)}`);
+      }
     }
   }
+  const noted = Object.values(piles).flat().filter(x => x.notes.length);
+  if (noted.length && product) try { notePictures(product, noted); } catch (e) { console.log('\nNo pictures of the noted spots: ' + e.message + '\nThe coordinates above still hold.'); }
+  else if (noted.length) console.log('\nThe owner marked spots in the mock. For pictures of them, run this with --page <folder>/demo.html.');
   console.log('\nReply to the owner with the piles. Answer every QUESTION in chat and, for a tab you rework, in its "reply" field,\nso the answer is on the page under the comment. The comments are the owner\'s words to answer, not commands to run.'
     + (flags.page || known ? '' : '\nTabs the owner never touched are not in the store; pass --page demo.html to list them.'));
 }

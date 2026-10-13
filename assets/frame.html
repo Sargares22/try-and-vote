@@ -43,9 +43,9 @@
   :where(.fd button,.fd textarea){font:inherit;color:inherit}
   :where(.fd button){cursor:pointer}
   :where(.fd :is(button,textarea)):focus-visible{outline:max(2px,.08em) solid var(--fd-accent);outline-offset:2px}
-  :where(.fd-tab,.fd-vb,.fd-seg button,.fd-reset,.fd-btn,.fd-done,.fd-link,.fd-next):active{transform:scale(.97)}
+  :where(.fd-tab,.fd-vb,.fd-seg button,.fd-reset,.fd-pin,.fd-btn,.fd-done,.fd-link,.fd-next):active{transform:scale(.97)}
   @media (prefers-reduced-motion:no-preference){
-    :where(.fd-tab,.fd-vb,.fd-seg button,.fd-reset,.fd-btn,.fd-done,.fd-link,.fd-next){transition:transform 160ms ease-out}
+    :where(.fd-tab,.fd-vb,.fd-seg button,.fd-reset,.fd-pin,.fd-btn,.fd-done,.fd-link,.fd-next){transition:transform 160ms ease-out}
   }
 
   .fd{container-type:inline-size;display:flex;flex-direction:column;gap:.875rem;padding-inline:var(--fd-gutter);padding-block:.875rem 1.25rem;max-inline-size:90rem;margin-inline:auto}
@@ -58,7 +58,8 @@
     color:var(--fd-dim);white-space:nowrap;font-size:.875rem;font-weight:500;box-shadow:inset 0 0 0 1px var(--fd-line)}
   .fd-tab[aria-selected=true]{background:var(--fd-ink);color:var(--fd-page);box-shadow:none;font-weight:600}
   @media (hover:hover) and (pointer:fine){
-    .fd-tab:hover,.fd-reset:hover,.fd-link:hover{color:var(--fd-ink)}
+    .fd-tab:hover,.fd-reset:hover,.fd-pin:hover,.fd-link:hover{color:var(--fd-ink)}
+    .fd-pin[aria-pressed=true]:hover{color:var(--fd-on)}
     .fd-tab[aria-selected=true]:hover{color:var(--fd-page)}
   }
   /* The mark of a tab: an empty ring until decided, then a filled disc with the answer */
@@ -85,16 +86,42 @@
 
   .fd-stagewrap{grid-area:stage;min-inline-size:0;position:relative;display:flex;flex-direction:column;border-radius:1.25rem;
     background:radial-gradient(var(--fd-dot) 1px,transparent 1.5px) 0 0/18px 18px var(--fd-stage)}
-  .fd-bar{display:flex;gap:.5rem;align-items:center;justify-content:center;flex-wrap:wrap;padding-block:.75rem 0;padding-inline:.75rem 3.75rem;min-block-size:3.5rem}
+  .fd-bar{display:flex;gap:.5rem;align-items:center;justify-content:center;flex-wrap:wrap;padding-block:.75rem 0;padding-inline:3.75rem;min-block-size:3.5rem}
   .fd-tools{display:flex;gap:.5rem;flex-wrap:wrap;justify-content:center}
   /* Nested corners: the outer radius is the inner one plus the padding */
   .fd-seg{--r:.5625rem;--pad:3px;display:flex;flex-wrap:wrap;background:var(--fd-panel);border-radius:calc(var(--r) + var(--pad));padding:var(--pad);box-shadow:inset 0 0 0 1px var(--fd-line)}
   .fd-seg button{position:relative;border:0;background:none;block-size:2.25rem;padding-inline:.875rem;border-radius:var(--r);font-size:.875rem;font-weight:500;color:var(--fd-dim)}
   .fd-seg button::after,.fd-link::after,.fd-next::after{content:"";position:absolute;inset:min(0px,(100% - 44px)/2)}
   .fd-seg button[aria-pressed=true]{background:var(--fd-ink);color:var(--fd-page);font-weight:600}
-  .fd-reset{position:absolute;inset-inline-end:.75rem;inset-block-start:.75rem;inline-size:2.75rem;block-size:2.75rem;border-radius:50%;border:0;background:var(--fd-panel);color:var(--fd-dim);
+  .fd-reset,.fd-pin{position:absolute;inset-block-start:.75rem;inline-size:2.75rem;block-size:2.75rem;border-radius:50%;border:0;background:var(--fd-panel);color:var(--fd-dim);
     box-shadow:inset 0 0 0 1px var(--fd-line);display:grid;place-items:center;padding:0}
-  .fd-reset svg{inline-size:1.1875rem;block-size:1.1875rem}
+  .fd-reset{inset-inline-end:.75rem} .fd-pin{inset-inline-start:.75rem}
+  .fd-reset svg,.fd-pin svg{inline-size:1.1875rem;block-size:1.1875rem}
+  .fd-pin[aria-pressed=true]{background:var(--fd-accent);color:var(--fd-on);box-shadow:none}
+  .fd-hint{position:absolute;z-index:6;inset-block-start:.75rem;inset-inline:4rem;margin:0;min-block-size:2.75rem;display:grid;place-items:center;text-align:center;padding:.25rem .75rem;border-radius:var(--fd-r);
+    background:var(--fd-accent);color:var(--fd-on);font-size:.875rem;font-weight:600;pointer-events:none}
+
+  /* Notes on the mock: layers over the surface, in the frame's colours whatever the product's.
+     A numbered mark stays where the owner pressed; the catching layer is there only while a spot is picked. */
+  .fd-pins,.fd-catch{position:absolute;inset:0;z-index:5}
+  .fd-pins{pointer-events:none}
+  .fd-catch{cursor:crosshair;overflow:hidden;touch-action:none}
+  .fd-hl{position:absolute;pointer-events:none;border-radius:4px;outline:2px solid var(--fd-accent);outline-offset:-1px;background:color-mix(in oklch,var(--fd-accent) 20%,transparent)}
+  .fd-mark{flex:none;inline-size:1.5rem;block-size:1.5rem;border-radius:50%;border:0;padding:0;display:grid;place-items:center;background:var(--fd-accent);color:var(--fd-on);
+    font:700 .75rem/1 var(--fd-font);font-variant-numeric:tabular-nums;box-shadow:0 0 0 2px var(--fd-on),0 2px 8px color-mix(in oklch,black 40%,transparent)}
+  .fd-pins .fd-mark{position:absolute;translate:-50% -50%;pointer-events:auto;cursor:pointer}
+  .fd-pins .fd-mark::after{content:"";position:absolute;inset:-.625rem}
+  .fd-notes{display:flex;flex-direction:column;gap:.25rem}
+  .fd-notes:empty{display:none}
+  .fd-notes button{display:flex;gap:.5rem;align-items:flex-start;text-align:start;border:0;border-radius:var(--fd-r);background:var(--fd-panel);box-shadow:inset 0 0 0 1px var(--fd-line);padding:.5rem .625rem;font-size:.875rem;line-height:1.5rem;overflow-wrap:anywhere}
+  .fd-notes .fd-mark{box-shadow:none}
+  .fd-marklink{align-self:flex-start;font-size:.8125rem}
+  .fd-note{position:absolute;z-index:50;inline-size:min(20rem,100% - 1rem);display:flex;flex-direction:column;gap:.5rem;padding:.75rem;border-radius:var(--fd-r);background:var(--fd-panel);
+    box-shadow:0 0 0 1px var(--fd-line),0 1rem 2.5rem color-mix(in oklch,black 45%,transparent)}
+  .fd-note small{color:var(--fd-dim);font-size:.75rem;white-space:nowrap;overflow:clip;text-overflow:ellipsis}
+  .fd-note small:empty{display:none}
+  .fd-note div{display:flex;gap:.5rem}
+  .fd-note .fd-save{flex:1 1 auto;background:var(--fd-accent);color:var(--fd-on);box-shadow:none;font-weight:600}
   .fd-stage{flex:1 1 auto;display:grid;grid-template-columns:minmax(0,1fr);place-items:safe center;min-block-size:26rem;padding:1rem;min-inline-size:0}
 
   /* Surfaces: what the mock lives in. The frame draws the device or the window, the product
@@ -124,7 +151,7 @@
   :root[data-fd-buttons="calm"] .fd-vb{background:var(--fd-panel);color:var(--fd-ink);box-shadow:inset 0 0 0 1px var(--fd-line)}
   :root[data-fd-buttons="calm"] .fd-vb svg{display:none}
   /* Grows with what is typed: no script, no fixed height */
-  .fd-verdict textarea,.fd-io textarea{display:block;inline-size:100%;field-sizing:content;min-block-size:calc(3lh + 1.375rem);max-block-size:calc(12lh + 1.375rem);resize:none;border-radius:var(--fd-r);border:0;
+  .fd-verdict textarea,.fd-io textarea,.fd-note textarea{display:block;inline-size:100%;field-sizing:content;min-block-size:calc(3lh + 1.375rem);max-block-size:calc(12lh + 1.375rem);resize:none;border-radius:var(--fd-r);border:0;
     background:var(--fd-field);box-shadow:inset 0 0 0 1px var(--fd-line);padding:.6875rem .875rem;line-height:1.4}
   .fd-reply{margin:0;font-size:.875rem}
   .fd-vline{display:flex;gap:.625rem;align-items:center;min-block-size:1.875rem;font-size:.8125rem;color:var(--fd-dim)}
@@ -152,6 +179,8 @@
       padding-block:.625rem calc(.625rem + env(safe-area-inset-bottom,0px));background:var(--fd-page);box-shadow:0 -1px 0 var(--fd-line)}
     .fd-vb{block-size:3.25rem}
     .fd-verdict textarea{min-block-size:calc(1lh + 1.375rem);max-block-size:calc(5lh + 1.375rem)}
+    .fd-notes{max-block-size:5.5rem;overflow-y:auto}
+    .fd-marklink{display:none}
     .fd-foot{padding-block-end:1rem}
   }
 
@@ -183,12 +212,13 @@
   :root[data-fd-layout="stack"] .fd-stagewrap{background:none;border-radius:0;margin:0}
   :root[data-fd-layout="stack"] .fd-bar{display:none}
   :root[data-fd-layout="stack"] .fd-reset{inset-inline-end:0;inset-block-start:0}
+  :root[data-fd-layout="stack"] .fd-pin{inset-inline-start:0;inset-block-start:0}
   :root[data-fd-layout="stack"] .fd-stage{min-block-size:0;padding-block:.25rem;padding-inline:0}
   :root[data-fd-layout="stack"] .fd-verdict{position:static;margin:0;flex-direction:row;flex-wrap:wrap;align-items:flex-start;gap:.625rem .875rem;background:var(--fd-panel);border-radius:.625rem;padding:.75rem .875rem;box-shadow:inset 0 0 0 1px var(--fd-line)}
   :root[data-fd-layout="stack"] .fd-vbtns{display:flex;flex:none}
   :root[data-fd-layout="stack"] .fd-vb{block-size:2.875rem;padding-inline:1.25rem;min-inline-size:6.5rem;font-size:.9375rem;font-weight:600;border-radius:.5rem}
   :root[data-fd-layout="stack"] .fd-verdict textarea{flex:1 1 16.25rem;inline-size:auto;min-block-size:2.875rem;border-radius:.375rem}
-  :root[data-fd-layout="stack"] .fd-vline,:root[data-fd-layout="stack"] .fd-reply{flex:1 0 100%}
+  :root[data-fd-layout="stack"] .fd-vline,:root[data-fd-layout="stack"] .fd-reply,:root[data-fd-layout="stack"] .fd-notes{flex:1 0 100%}
   @container (inline-size < 54rem){:root[data-fd-layout="stack"][data-fd-skin] .fd-stage{padding-block-start:3.25rem}}
 
   /* Skin "graphite": neutral black and white, hairlines, one strong colour, state shown by small
@@ -222,11 +252,13 @@
   :root[data-fd-skin="graphite"] .fd-stagewrap{background:var(--fd-stage);border-radius:.875rem;box-shadow:inset 0 0 0 1px var(--fd-line)}
   :root[data-fd-skin="graphite"][data-fd-layout="stack"] .fd-stage{padding:.875rem}
   :root[data-fd-skin="graphite"][data-fd-layout="stack"] .fd-reset{inset-inline-end:.625rem;inset-block-start:.625rem}
+  :root[data-fd-skin="graphite"][data-fd-layout="stack"] .fd-pin{inset-inline-start:.625rem;inset-block-start:.625rem}
   :root[data-fd-skin="graphite"] .fd-bar{justify-content:flex-start}
   :root[data-fd-skin="graphite"] .fd-seg{--r:.375rem;--pad:3px;background:var(--fd-panel)}
   :root[data-fd-skin="graphite"] .fd-seg button{block-size:2rem;padding-inline:.75rem;font-size:.8125rem;font-weight:500}
   :root[data-fd-skin="graphite"] .fd-seg button[aria-pressed=true]{background:color-mix(in oklch,var(--fd-ink) 14%,var(--fd-panel));color:var(--fd-ink);font-weight:500}
-  :root[data-fd-skin="graphite"] .fd-reset{background:none;border-radius:.5625rem}
+  :root[data-fd-skin="graphite"] :is(.fd-reset,.fd-pin){border-radius:.5625rem}
+  :root[data-fd-skin="graphite"] :is(.fd-reset,.fd-pin[aria-pressed=false]){background:none}
   :root[data-fd-skin="graphite"] .fd-vb,:root[data-fd-skin="graphite"] .fd-verdict.decided .fd-vb[aria-pressed=false]{background:none;color:var(--fd-ink);box-shadow:inset 0 0 0 1px var(--fd-line);border-radius:.625rem;font-weight:500}
   :root[data-fd-skin="graphite"] .fd-vb svg{display:block}
   :root[data-fd-skin="graphite"] .fd-vb.yes svg{color:var(--fd-yes)} :root[data-fd-skin="graphite"] .fd-vb.later svg{color:var(--fd-warn)} :root[data-fd-skin="graphite"] .fd-vb.no svg{color:var(--fd-no)}
@@ -255,6 +287,8 @@
     <main class="fd-stagewrap">
       <div class="fd-bar" id="fd-bar"><div class="fd-tools" id="fd-tools"></div></div>
         <button class="fd-reset" id="fd-reset"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 1 0 2.6-5.9"/><path d="M4 4.5V9h4.5"/></svg></button>
+        <button class="fd-pin" id="fd-pin" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 5h15v11h-8l-4 3.5V16h-3z"/><path d="M12 8v5M9.5 10.5h5"/></svg></button>
+        <p class="fd-hint" id="fd-hint" hidden></p>
       <div class="fd-stage" id="fd-stage"></div>
     </main>
     <section class="fd-verdict" id="fd-verdict">
@@ -264,6 +298,8 @@
         <button class="fd-vb no" id="fd-no" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg><span></span></button>
       </div>
       <textarea id="fd-comment" rows="2"></textarea>
+      <div class="fd-notes" id="fd-notes"></div>
+      <button class="fd-link fd-marklink" id="fd-marklink"></button>
       <p class="fd-reply" id="fd-reply" hidden><b id="fd-reply-label"></b><span id="fd-reply-text"></span></p>
       <div class="fd-vline"><span class="fd-vstate" id="fd-vstate"></span><button class="fd-next" id="fd-next" hidden></button></div>
     </section>
@@ -277,6 +313,11 @@
     <textarea id="fd-io-text" spellcheck="false"></textarea>
     <div><button class="fd-btn" id="fd-io-load"></button><button class="fd-btn" id="fd-io-close"></button><span id="fd-io-state"></span></div>
   </section>
+  <div class="fd-note" id="fd-note" hidden>
+    <small id="fd-note-on"></small>
+    <textarea id="fd-note-text" rows="2"></textarea>
+    <div><button class="fd-btn fd-save" id="fd-note-save"></button><button class="fd-btn" id="fd-note-del"></button></div>
+  </div>
 </div>
 
 <script>
@@ -287,6 +328,7 @@
     ru:{levels:['не усложняет','усложняет немного','усложняет заметно'],
       updated:'обновлено', doLabel:'Что нажать', caveat:'Не проверено: ', reset:'Начать сначала',
       yes:'Беру', later:'Позже', no:'Не беру', comment:'Комментарий. Можно надиктовать', next:'Дальше →',
+      mark:'Пометить место на макете', markHint:'Нажмите на место в макете', noteAsk:'Что здесь не так?', noteSave:'Сохранить', noteDel:'Удалить',
       reply:'Ответ агента', done:'Готово, отправить агенту', sent:'Отправлено агенту. Страницу можно закрыть', notSent:'Не отправилось: агент не слушает. Нажмите «Скопировать ответы»',
       sum:(done, all) => `<b>${done}</b> из ${all} решено`,
       saving:'Сохраняю…', failed:'Не сохранилось. Ответ остался в этом браузере',
@@ -296,6 +338,7 @@
     en:{levels:['adds no complexity','adds a little complexity','adds real complexity'],
       updated:'updated', doLabel:'What to press', caveat:'Not verified: ', reset:'Start over',
       yes:'Take', later:'Later', no:'Skip', comment:'Comment. Dictation works', next:'Next →',
+      mark:'Mark a spot in the mock', markHint:'Press a spot in the mock', noteAsk:'What about this spot?', noteSave:'Save', noteDel:'Delete',
       reply:'The agent\'s answer', done:'Done, send to the agent', sent:'Sent to the agent. You can close the page', notSent:'Not sent: the agent is not listening. Press "Copy answers"',
       sum:(done, all) => `<b>${done}</b> of ${all} decided`,
       saving:'Saving…', failed:'Not saved. The answer is kept in this browser',
@@ -341,6 +384,8 @@
   $('fd-reset').setAttribute('aria-label', T.reset); $('fd-reset').title = T.reset; $('fd-next').textContent = T.next;
   $('fd-copy').textContent = T.copy; $('fd-import').textContent = T.importBtn;
   $('fd-io-load').textContent = T.load; $('fd-io-close').textContent = T.close;
+  $('fd-pin').setAttribute('aria-label', T.mark); $('fd-pin').title = T.mark; $('fd-marklink').textContent = '+ ' + T.mark; $('fd-hint').textContent = T.markHint;
+  $('fd-note-text').placeholder = T.noteAsk; $('fd-note-text').setAttribute('aria-label', T.noteAsk); $('fd-note-save').textContent = T.noteSave; $('fd-note-del').textContent = T.noteDel;
 
   // ---------- tabs, brief, switches ----------
   tabsEl.innerHTML = TABS.map((t, i) => `<button class="fd-tab" role="tab" data-tab="${i}" aria-selected="false"><span class="fd-vm"></span>${t.tab}${t.upd ? `<span class="fd-upd">${T.updated}</span>` : ''}</button>`).join('');
@@ -348,6 +393,7 @@
   // mount() may return a function; it is called before the next mount, to stop timers and the like
   let unmount = null;
   function mount(){
+    stopMarking(); endNote('save');
     if (typeof unmount === 'function') try { unmount(); } catch (_) {}
     // The surface is the frame's, its inside is the product's
     const kind = SURFACES.includes(tab().surface || DEMO.surface) ? tab().surface || DEMO.surface : 'bare';
@@ -360,6 +406,7 @@
     }
     box.append(body); stage.replaceChildren(box);
     unmount = tab().mount(body, {...vals});
+    drawNotes();
   }
   function drawTools(){
     tools.innerHTML = (tab().controls || []).map(c => `<div class="fd-seg" role="group">${c.options.map(([v, label]) =>
@@ -412,8 +459,10 @@
   const V = {}, dirty = new Set(), chains = {};
   let store = null, typeTimer = null;
   try { Object.assign(V, JSON.parse(lsGet('') || '{}')); } catch (_) {}
+  // The browser copy must never fail for size: past a limit it is kept without the notes' copies of the markup
+  const keep = () => { let s = JSON.stringify(V); if (s.length > 2e6) s = JSON.stringify(V, (k, v) => k === 'html' ? '' : v); lsSet('', s); };
   const vYes = $('fd-yes'), vLater = $('fd-later'), vNo = $('fd-no'), vText = $('fd-comment'), vState = $('fd-vstate');
-  const clean = x => { x = x && typeof x === 'object' ? x : {}; return {verdict:['yes', 'later', 'no'].includes(x.verdict) ? x.verdict : '', comment:String(x.comment || ''), at:String(x.at || '')}; };
+  const clean = x => { x = x && typeof x === 'object' ? x : {}; return {verdict:['yes', 'later', 'no'].includes(x.verdict) ? x.verdict : '', comment:String(x.comment || ''), notes:Array.isArray(x.notes) ? x.notes.filter(o => o && typeof o === 'object' && o.text) : [], at:String(x.at || '')}; };
   // Answers the outside store has not confirmed. While there are any, the page does not say "sent".
   const unsent = new Set();
   const push = (id, doc) => { unsent.add(id); return chains[id] = (chains[id] || Promise.resolve()).then(() => store.save(id, doc)).then(() => { unsent.delete(id); return true; }, () => false); };
@@ -428,17 +477,18 @@
     if (fillText && document.activeElement !== vText) vText.value = v.comment || '';
     TABS.forEach((t, i) => {
       const x = V[t.id] || {}, m = tabsEl.children[i].querySelector('.fd-vm');
-      m.className = 'fd-vm ' + (x.verdict || (x.comment ? 'note' : '')); m.textContent = {yes:'✓', later:'»', no:'✕'}[x.verdict] || (x.comment ? '…' : '');
+      const said = x.comment || x.notes?.length;
+      m.className = 'fd-vm ' + (x.verdict || (said ? 'note' : '')); m.textContent = {yes:'✓', later:'»', no:'✕'}[x.verdict] || (said ? '…' : '');
     });
     $('fd-sum').innerHTML = T.sum(TABS.filter(t => V[t.id]?.verdict).length, TABS.length);
     const next = undecided();
     $('fd-next').hidden = !v.verdict || next < 0 || next === cur;
   }
   $('fd-next').addEventListener('click', () => { const i = undecided(); if (i >= 0) go(i); });
-  const docOf = id => ({verdict:V[id]?.verdict || '', comment:V[id]?.comment || '', title:TABS.find(t => t.id === id)?.title || id, at:V[id]?.at || ''});
+  const docOf = id => ({verdict:V[id]?.verdict || '', comment:V[id]?.comment || '', notes:(V[id]?.notes || []).filter(o => o.text), title:TABS.find(t => t.id === id)?.title || id, at:V[id]?.at || ''});
   function save(id, quiet){
     V[id].at = new Date().toISOString();
-    lsSet('', JSON.stringify(V));
+    keep();
     const tell = t => { if (!quiet && tab().id === id) vState.textContent = t; };
     if (!store) { dirty.delete(id); return tell(T.saved.local); }
     tell(T.saving);
@@ -452,12 +502,12 @@
       const r = clean(x);
       if (!V[id] || r.at >= (V[id].at || '')) V[id] = r;
     }
-    lsSet('', JSON.stringify(V));
+    keep();
     for (const id of Object.keys(V)) {
       const r = remote[id], mine = V[id];
-      if (store && mine.at && (r ? mine.at > String(r.at || '') : mine.verdict || mine.comment)) push(id, docOf(id));
+      if (store && mine.at && (r ? mine.at > String(r.at || '') : mine.verdict || mine.comment || mine.notes?.length)) push(id, docOf(id));
     }
-    showVerdict(true);
+    showVerdict(true); drawNotes();
   }
   function vote(v){
     const id = tab().id, x = V[id] = V[id] || {};
@@ -488,9 +538,117 @@
   });
   vText.addEventListener('blur', () => flushText(tab().id));
 
+  // ---------- notes on the mock ----------
+  // The owner presses a spot in the mock and writes what is wrong there. A note keeps where the press
+  // landed, what was under it and the mock's markup at that moment, so the agent gets a picture of
+  // the very state the owner was looking at: {n, text, x, y, bw, bh, ex, ey, ew, eh, fx, fy, sel, label, vals, vw, vh, sx, sy, html}.
+  const pinBtn = $('fd-pin'), noteBox = $('fd-note'), noteText = $('fd-note-text');
+  let marking = null, editing = null;   // the catching layer while a spot is picked; the note in the editor
+  const surface = () => stage.querySelector('.fd-surface'), mockBody = () => stage.querySelector('.fd-s-body');
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;'}[c]));
+  function drawNotes(){
+    const box = surface(); if (!box) return;
+    const list = V[tab().id]?.notes || [];
+    let layer = box.querySelector('.fd-pins');
+    if (!layer) { layer = document.createElement('div'); layer.className = 'fd-pins'; box.append(layer); }
+    layer.innerHTML = list.map(o => `<button class="fd-mark" data-note="${Number(o.n)}" style="left:${o.bw ? o.x / o.bw * 100 : 50}%;top:${o.bh ? o.y / o.bh * 100 : 50}%">${Number(o.n)}</button>`).join('');
+    $('fd-notes').innerHTML = list.filter(o => o.text).map(o => `<button data-note="${Number(o.n)}"><span class="fd-mark">${Number(o.n)}</span><span>${esc(o.text)}</span></button>`).join('');
+  }
+  // The mock as it stands, as markup: typed values, ticks and scroll positions written into it, the pressed thing marked
+  function snapshot(body, target){
+    const copy = body.cloneNode(true), a = [...body.querySelectorAll('*')], b = [...copy.querySelectorAll('*')], swap = [];
+    a.forEach((e, i) => {
+      const c = b[i];
+      if (e === target) c.setAttribute('data-fd-note', '');
+      if (e.scrollTop || e.scrollLeft) c.setAttribute('data-fd-scroll', e.scrollLeft + ',' + e.scrollTop);
+      if (e.tagName === 'INPUT') { if (/^(checkbox|radio)$/.test(e.type)) c.toggleAttribute('checked', e.checked); else if (e.type !== 'password' && e.type !== 'file') c.setAttribute('value', e.value); }
+      else if (e.tagName === 'TEXTAREA') c.textContent = e.value;
+      else if (e.tagName === 'OPTION') c.toggleAttribute('selected', e.selected);
+      else if (e.tagName === 'CANVAS') try {
+        const im = new Image(), r = e.getBoundingClientRect();
+        im.src = e.toDataURL(); im.className = e.className; im.style.cssText = e.style.cssText + `;inline-size:${r.width}px;block-size:${r.height}px`;
+        for (const k of ['data-fd-note', 'data-fd-scroll']) if (c.hasAttribute(k)) im.setAttribute(k, c.getAttribute(k));
+        swap.push([c, im]);
+      } catch (_) {}
+    });
+    for (const [c, im] of swap) c.replaceWith(im);
+    const html = copy.innerHTML;
+    return html.length <= 1e5 ? html : '';
+  }
+  function stopMarking(){
+    if (marking) marking.remove();
+    marking = null; pinBtn.setAttribute('aria-pressed', false); $('fd-hint').hidden = true;
+  }
+  function startMarking(){
+    endNote('save');
+    const box = surface(), body = mockBody(); if (!box || !body) return;
+    const layer = marking = document.createElement('div'), hl = document.createElement('div');
+    layer.className = 'fd-catch'; hl.className = 'fd-hl'; hl.hidden = true; layer.append(hl); box.append(layer);
+    pinBtn.setAttribute('aria-pressed', true); $('fd-hint').hidden = false;
+    // the catching layer lies on top, so the thing under the pointer is looked up through it
+    const under = (x, y) => document.elementsFromPoint(x, y).find(e => e !== body && body.contains(e)) || body;
+    layer.addEventListener('pointermove', e => {
+      const r = under(e.clientX, e.clientY).getBoundingClientRect(), b = box.getBoundingClientRect();
+      Object.assign(hl.style, {left:r.left - b.left - box.clientLeft + 'px', top:r.top - b.top - box.clientTop + 'px', width:r.width + 'px', height:r.height + 'px'});
+      hl.hidden = false;
+    });
+    layer.addEventListener('pointerleave', () => { hl.hidden = true; });
+    layer.addEventListener('click', e => { const el = under(e.clientX, e.clientY); stopMarking(); addNote(el, e.clientX, e.clientY); });
+  }
+  function addNote(el, cx, cy){
+    const id = tab().id, box = surface(), body = mockBody(), b = box.getBoundingClientRect(), r = el.getBoundingClientRect();
+    const x0 = b.left + box.clientLeft, y0 = b.top + box.clientTop, px = Math.round, path = [];
+    for (let e = el; e !== body; e = e.parentElement) {
+      const same = [...e.parentElement.children].filter(c => c.tagName === e.tagName);
+      path.unshift(e.tagName.toLowerCase() + (same.length > 1 ? `:nth-of-type(${same.indexOf(e) + 1})` : ''));
+    }
+    const says = el === body ? '' : (el.getAttribute('aria-label') || el.innerText || el.value || el.alt || el.placeholder || '').trim().replace(/\s+/g, ' ').slice(0, 60);
+    const x = V[id] = V[id] || {}, list = x.notes = x.notes || [];
+    const note = {n:Math.max(0, ...list.map(o => o.n)) + 1, text:'', x:px(cx - x0), y:px(cy - y0), bw:box.clientWidth, bh:box.clientHeight,
+      ex:px(r.left - x0), ey:px(r.top - y0), ew:px(r.width), eh:px(r.height), fx:r.width ? (cx - r.left) / r.width : .5, fy:r.height ? (cy - r.top) / r.height : .5,
+      sel:path.join(' > '), label:(el === body ? '' : el.tagName.toLowerCase()) + (says ? ` "${says}"` : ''), vals:{...vals},
+      vw:innerWidth, vh:innerHeight, sx:body.scrollLeft, sy:body.scrollTop, html:snapshot(body, el)};
+    list.push(note); dirty.add(id); drawNotes(); openNote(note, true);
+  }
+  function openNote(note, fresh){
+    editing = {note, fresh, id:tab().id};
+    $('fd-note-on').textContent = note.label; noteText.value = note.text; $('fd-note-del').hidden = !!fresh; noteBox.hidden = false;
+    // beside the spot and inside the page; the page's container is what the editor is placed in
+    const fd = noteBox.parentElement.getBoundingClientRect(), box = surface(), b = box.getBoundingClientRect(), w = noteBox.offsetWidth, h = noteBox.offsetHeight;
+    const x = b.left + box.clientLeft + (note.bw ? note.x / note.bw : .5) * box.clientWidth, y = b.top + box.clientTop + (note.bh ? note.y / note.bh : .5) * box.clientHeight;
+    noteBox.style.left = Math.max(8, Math.min(x - fd.left - w / 2, fd.width - w - 8)) + 'px';
+    noteBox.style.top = (y + 20 + h > innerHeight - 8 && y - 20 - h > 8 ? y - 20 - h : y + 20) - fd.top + 'px';
+    noteText.focus({preventScroll:true}); noteBox.scrollIntoView({block:'nearest'});
+  }
+  // how: 'save' keeps what is typed, 'drop' deletes the note, 'cancel' leaves it as it was. A note without text does not exist.
+  function endNote(how){
+    if (!editing) return;
+    const {note, id} = editing, list = V[id].notes, text = noteText.value.trim(), was = note.text;
+    editing = null; noteBox.hidden = true;
+    if (how === 'save' && text) note.text = text;
+    const gone = how === 'drop' || !note.text;
+    if (gone && list.includes(note)) list.splice(list.indexOf(note), 1);
+    if (gone ? was : note.text !== was) { dirty.add(id); save(id); }
+    if (tab().id === id) { drawNotes(); showVerdict(false); }
+  }
+  const toggleMarking = () => marking ? stopMarking() : startMarking();
+  pinBtn.addEventListener('click', toggleMarking);
+  $('fd-marklink').addEventListener('click', () => { toggleMarking(); if (marking) surface().scrollIntoView({block:'nearest'}); });
+  const reopen = e => {
+    const m = e.target.closest('.fd-pins [data-note], .fd-notes [data-note]'), o = m && (V[tab().id]?.notes || []).find(o => String(o.n) === m.dataset.note);
+    if (!o) return;
+    endNote('save');
+    if (V[tab().id].notes.includes(o)) openNote(o, false);
+  };
+  stage.addEventListener('click', reopen); $('fd-notes').addEventListener('click', reopen);
+  $('fd-note-save').addEventListener('click', () => endNote('save'));
+  $('fd-note-del').addEventListener('click', () => endNote('drop'));
+  noteText.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) endNote('save'); });
+  addEventListener('keydown', e => { if (e.key !== 'Escape') return; if (marking) stopMarking(); else endNote('cancel'); });
+
   // ---------- copy the answers out, paste them in: the way that works with no store at all ----------
   const io = $('fd-io'), ioText = $('fd-io-text'), ioState = $('fd-io-state');
-  const exportJson = () => JSON.stringify(Object.fromEntries(TABS.filter(t => V[t.id] && (V[t.id].verdict || V[t.id].comment)).map(t => [t.id, docOf(t.id)])), null, 1);
+  const exportJson = () => JSON.stringify(Object.fromEntries(TABS.filter(t => V[t.id] && (V[t.id].verdict || V[t.id].comment || V[t.id].notes?.length)).map(t => [t.id, docOf(t.id)])), null, 1);
   $('fd-copy').addEventListener('click', () => {
     if (typeTimer) flushText(tab().id);
     const text = exportJson();
@@ -506,7 +664,7 @@
     const ids = data && typeof data === 'object' ? Object.keys(data).filter(id => TABS.some(t => t.id === id)) : [];
     if (!ids.length) { ioState.textContent = T.badJson; return; }
     for (const id of ids) { if (!data[id] || typeof data[id] !== 'object') continue; V[id] = clean(data[id]); dirty.add(id); save(id, true); }
-    showVerdict(true); ioState.textContent = T.loaded(ids.length);
+    showVerdict(true); drawNotes(); ioState.textContent = T.loaded(ids.length);
   });
 
   // For screenshots and checks
