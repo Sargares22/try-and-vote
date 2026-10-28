@@ -98,6 +98,9 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
     say(noted.length === 1 && noted[0].x === 12 && noted[0].html.includes('data-fd-note') && !('extra' in noted[0]), 'a note on the mock is stored with its spot; a note without text is not');
     const piles = run(['verdicts', join(work, 'verdicts.json')]);
     say(piles.includes('QUESTION 1, on a spot of the mock: Too small?') && piles.includes('pressed at x=12 y=30 of a 300x500 mock') && piles.includes('switches: mode=new'), 'the answers name the noted spot and its coordinates', piles.slice(0, 300));
+    await fetch(u + '/__verdicts/pick', { method: 'PUT', body: JSON.stringify({ verdict: 'yes', vals: { mode: 'chips', bad: { x: 1 } } }) });
+    const picked = run(['verdicts', join(work, 'verdicts.json')]);
+    say(picked.includes('answered with the switches at: mode=chips'), 'a verdict names where the switches stood: the owner\'s pick between the ways', picked.slice(0, 300));
   } finally { run(['stop', page]); child.kill(); }
 }
 if (!fast) {

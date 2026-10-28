@@ -540,7 +540,8 @@
   }
 
   // ---------- verdict stores ----------
-  // A verdict is one document per tab: {verdict:'yes'|'later'|'no'|'', comment, title, at}.
+  // A verdict is one document per tab: {verdict:'yes'|'later'|'no'|'', comment, notes, vals, title, at};
+  // vals is where the tab's switches stood when the owner answered.
   // A store is {name, load() -> {id: doc}, save(id, doc), watch?(cb)}. The browser copy is always
   // kept as well, so an answer is never lost when the outside store is away.
   const stores = [
@@ -567,7 +568,7 @@
   const kept = lean => JSON.stringify(V, (k, v) => k === 'notes' && Array.isArray(v) ? v.filter(o => o && o.text) : lean && k === 'html' ? '' : v);
   const keep = () => { const s = kept(false); if (s.length > 2e6 || !lsSet('', s)) lsSet('', kept(true)); };
   const vYes = $('fd-yes'), vLater = $('fd-later'), vNo = $('fd-no'), vText = $('fd-comment'), vState = $('fd-vstate');
-  const clean = x => { x = x && typeof x === 'object' ? x : {}; return {verdict:['yes', 'later', 'no'].includes(x.verdict) ? x.verdict : '', comment:String(x.comment || ''), notes:Array.isArray(x.notes) ? x.notes.filter(o => o && typeof o === 'object' && o.text) : [], at:String(x.at || '')}; };
+  const clean = x => { x = x && typeof x === 'object' ? x : {}; return {verdict:['yes', 'later', 'no'].includes(x.verdict) ? x.verdict : '', comment:String(x.comment || ''), notes:Array.isArray(x.notes) ? x.notes.filter(o => o && typeof o === 'object' && o.text) : [], vals:x.vals && typeof x.vals === 'object' ? x.vals : {}, at:String(x.at || '')}; };
   // Answers the outside store has not confirmed. While there are any, the page does not say "sent".
   const unsent = new Set();
   const push = (id, doc) => { unsent.add(id); return chains[id] = (chains[id] || Promise.resolve()).then(() => store.save(id, doc)).then(() => { unsent.delete(id); return true; }, () => false); };
@@ -590,7 +591,7 @@
     $('fd-next').hidden = !v.verdict || next < 0 || next === cur;
   }
   $('fd-next').addEventListener('click', () => { const i = undecided(); if (i >= 0) go(i); });
-  const docOf = id => ({verdict:V[id]?.verdict || '', comment:V[id]?.comment || '', notes:(V[id]?.notes || []).filter(o => o.text), title:TABS.find(t => t.id === id)?.title || id, at:V[id]?.at || ''});
+  const docOf = id => ({verdict:V[id]?.verdict || '', comment:V[id]?.comment || '', notes:(V[id]?.notes || []).filter(o => o.text), vals:V[id]?.vals || {}, title:TABS.find(t => t.id === id)?.title || id, at:V[id]?.at || ''});
   function save(id, quiet){
     V[id].at = new Date().toISOString();
     keep();
@@ -618,6 +619,8 @@
     const id = tab().id, x = V[id] = V[id] || {};
     x.verdict = x.verdict === v ? '' : v;
     x.comment = vText.value.trim();
+    // Where the switches stand when the owner answers is their pick between the ways
+    if ((tab().controls || []).length) x.vals = {...vals};
     dirty.add(id); showVerdict(false); save(id);
   }
   vYes.addEventListener('click', () => vote('yes'));
