@@ -121,11 +121,12 @@
 
   // One entry per candidate feature.
   //   id     short latin word: the tab's #anchor and its document id in the verdict store
-  //   tab    the tab's label, two or three words
+  //   tab    the tab's label, two or three words, up to 24 characters
   //   lvl    0 does not complicate the product, 1 a little, 2 noticeably
-  //   title, desc   what it is, through the user's eyes, one or two sentences
+  //   title, desc   what it is, through the user's eyes, one or two sentences: title up to 70
+  //                 characters, desc up to 240
   //   who    who proposed it and the opinions, one line
-  //   do     what to press in the mock
+  //   do     what to press in the mock, up to 170 characters
   //   caveat optional: what this demo shows that has not been checked on the real thing
   //   upd    true on a tab changed since the owner last looked; such tabs are put first
   //   reply  optional: your answer to the owner's comment on this tab, shown under the comment
